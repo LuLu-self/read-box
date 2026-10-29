@@ -1,5 +1,5 @@
 // End-to-end check of the board against a library folder, with GitHub's API mocked.
-// Usage: LIB=<path to read-box-library clone> OUT=<screenshot dir> node web/tests/e2e/board.cjs
+// Usage: LIB=<path to read-box-library clone> OUT=<screenshot dir> [BASE=<deployed URL>] node web/tests/e2e/board.cjs
 const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
@@ -53,8 +53,9 @@ async function mockGitHub(page) {
 }
 
 (async () => {
-  const srv = await serve();
-  const base = `http://127.0.0.1:${srv.address().port}`;
+  // BASE=<deployed URL> checks the live Pages site instead of a local server.
+  const srv = process.env.BASE ? null : await serve();
+  const base = process.env.BASE ? process.env.BASE.replace(/\/$/, '') : `http://127.0.0.1:${srv.address().port}`;
   const browser = await chromium.launch();
   const fails = [];
   const check = (ok, msg) => { if (!ok) fails.push(msg); console.log(`${ok ? 'ok  ' : 'FAIL'} ${msg}`); };
@@ -122,7 +123,7 @@ async function mockGitHub(page) {
     await ctx.close();
   }
   await browser.close();
-  srv.close();
+  if (srv) srv.close();
   if (fails.length) { console.log(`\n${fails.length} failed`); process.exit(1); }
   console.log('\nall passed');
 })();
