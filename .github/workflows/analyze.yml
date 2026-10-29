@@ -13,7 +13,7 @@ on:
         default: ''
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN:
-        required: true
+        required: false
       YOUTUBE_API_KEY:
         required: false
 
@@ -141,6 +141,8 @@ jobs:
         run: |
           set +e
           TOKEN="$CLAUDE_CODE_OAUTH_TOKEN"; unset CLAUDE_CODE_OAUTH_TOKEN
+          # Without a token the item is still kept as a card (title, source, link).
+          [ -n "$TOKEN" ] || { echo "::warning::CLAUDE_CODE_OAUTH_TOKEN is not set; saving a card without AI summary"; exit 0; }
           S="$RB/action/scripts"
           TAX=(); [ -f "$GITHUB_WORKSPACE/taxonomy.json" ] && TAX=(--taxonomy "$GITHUB_WORKSPACE/taxonomy.json")
           chmod -R a-w "$IN"
