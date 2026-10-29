@@ -35,6 +35,9 @@ def check_capture(cap: object) -> str | None:
         return "capture: needs a url or text"
     if len(text) > TEXT_MAX:
         return "capture: text too long"
+    redo = cap.get("redo_of")
+    if redo is not None and not (isinstance(redo, str) and ID_RE.match(redo)):
+        return "capture: redo_of is not an item id"
     why = cap.get("why") or ""
     if not isinstance(why, str) or len(why) > WHY_MAX:
         return "capture: why must be a string of at most 200 characters"

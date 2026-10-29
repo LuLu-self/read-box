@@ -31,7 +31,8 @@ Write $OUT/summary.json with exactly this shape and nothing else in the file:
  "category": "<exactly one category name from the list below; 收件匣 when unsure>",
  "confidence": "<高, 中 or 低: how sure you are about the category>",
  "subcategory": "<one sub-category name listed under that category, or empty. For 旅遊 write
-   國家 or 國家 › 地區, e.g. 日本 › 大阪, using names in zh-TW>",
+   國家 or 國家 › 城市, e.g. 日本 › 大阪>",
+ "locations": [{"country": "<zh-TW country>", "city": "<zh-TW city, empty if only a country>"}],
  "tags": {"place_types": ["<0-6 from: $PLACE_TYPES>"],
           "seasons": ["<0-3 from: $SEASONS>"],
           "budget": "<empty, $, $$ or $$$>",
@@ -39,8 +40,9 @@ Write $OUT/summary.json with exactly this shape and nothing else in the file:
           "topics": ["<1-6 topics, 2-20 characters each>"]},
  "places": [{"name": "<shop, sight or venue as written in the source, 1-60 characters>",
              "type": "<one of: $PLACE_TYPES>",
-             "country": "<zh-TW country, e.g. 日本, 台灣; empty if unknown>",
-             "area": "<city or district, 0-30 characters>",
+             "country": "<zh-TW country; empty if unknown>",
+             "city": "<zh-TW city; empty if unknown>",
+             "district": "<neighbourhood or district inside the city, e.g. 難波, 信義區; else empty>",
              "address": "<only if the source gives it, else empty>"}],
  "actions": ["<0-5 things LuLu could actually do with this, 4-120 characters each>"],
  "nature": "<事實為主, 觀點為主, 混合 or 無法判斷>",
@@ -50,6 +52,10 @@ Write $OUT/summary.json with exactly this shape and nothing else in the file:
  "extra": {<category-specific fields below, string values up to 200 characters; {} if none>}}
 
 places: list every concrete venue the source names (at most 30); [] when there are none.
+locations: every country/city the item is about (at most 5), including ones with no named venue
+(e.g. a 京都 itinerary); [] when it is not about a place.
+Place names: write countries and cities the way Taiwan writes them, without 市/縣 suffixes:
+台灣, 日本, 韓國, 泰國; 台北, 新北, 台中, 高雄, 大阪, 京都, 東京, 首爾, 曼谷. Keep one spelling per place.
 extra keys by category (use only these keys, skip ones the source does not support):
 - 旅遊: 季節, 預算, 交通, 行程天數
 - 美食: 價位, 必點, 營業時間

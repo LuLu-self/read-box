@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import places as pl  # noqa: E402
 import taxonomy  # noqa: E402
 from common import has_chinese  # noqa: E402
 
@@ -25,7 +26,7 @@ LANGS = {"zh-TW", "zh-CN", "ja", "en", "ko", "other"}
 EXTRA_KEYS = {"季節", "預算", "交通", "行程天數", "價位", "必點", "營業時間", "適用任務", "方法或框架",
               "適用對象", "主題", "可練習的方法", "適合重讀的時機", "實用清單", "情境", "訓練項目", "強度",
               "注意事項", "重要數字", "建議", "程度", "學習方法", "重點補充"}
-TOP_KEYS = {"title", "one_line", "key_points", "quotes", "category", "confidence", "subcategory", "tags",
+TOP_KEYS = {"title", "one_line", "key_points", "quotes", "category", "confidence", "subcategory", "locations", "tags",
             "places", "actions", "nature", "sponsored", "lang", "image_text", "extra"}
 
 
@@ -78,7 +79,8 @@ def check(raw: object, text: str, tax: dict) -> tuple[dict, list[str]]:
     sub = raw.get("subcategory") if isinstance(raw.get("subcategory"), str) else ""
     sub = sub.strip().replace(">", "›")
     if cat in taxonomy.FREE_SUBS:
-        sub = sub[:30] if re.fullmatch(r"[^›]{1,15}( › [^›]{1,15})?", sub) else ""
+        parts = [x.strip() for x in sub.split("›")] if re.fullmatch(r"[^›]{1,20}(›[^›]{1,20})?", sub) else []
+        sub = " › ".join(x for x in (pl.country(parts[0]), pl.city(parts[1]) if len(parts) > 1 else "") if x) if parts else ""
     elif sub not in taxonomy.subs(tax, cat or ""):
         sub = ""
     s["subcategory"] = sub
@@ -92,6 +94,7 @@ def check(raw: object, text: str, tax: dict) -> tuple[dict, list[str]]:
         "topics": _str_list(t.get("topics"), 0, 6, 2, 20) or [],
     }
 
+    st = lambda d, k, n: d.get(k).strip()[:n] if isinstance(d.get(k), str) else ""  # noqa: E731
     places = []
     for p in raw.get("places") or [] if isinstance(raw.get("places"), list) else []:
         if not isinstance(p, dict) or not _str(p.get("name"), 1, 60):
@@ -99,11 +102,20 @@ def check(raw: object, text: str, tax: dict) -> tuple[dict, list[str]]:
         places.append({
             "name": p["name"].strip(),
             "type": p.get("type") if p.get("type") in taxonomy.PLACE_TYPES else "景點",
-            "country": p.get("country").strip()[:20] if isinstance(p.get("country"), str) else "",
-            "area": p.get("area").strip()[:30] if isinstance(p.get("area"), str) else "",
-            "address": p.get("address").strip()[:120] if isinstance(p.get("address"), str) else "",
+            "country": pl.country(st(p, "country", 20)),
+            # Older prompts wrote the city as "area".
+            "city": pl.city(st(p, "city", 30) or st(p, "area", 30)),
+            "district": st(p, "district", 30),
+            "address": st(p, "address", 120),
         })
     s["places"] = places[:30]
+    locs = []
+    for loc in raw.get("locations") or [] if isinstance(raw.get("locations"), list) else []:
+        if isinstance(loc, dict):
+            key = pl.location_key(st(loc, "country", 20), st(loc, "city", 30))
+            if key[0] and list(key) not in locs:
+                locs.append(list(key))
+    s["locations"] = locs[:5]
     s["actions"] = _str_list(raw.get("actions"), 0, 5, 4, 120) or []
     s["nature"] = raw.get("nature") if raw.get("nature") in NATURE else "無法判斷"
     s["sponsored"] = raw.get("sponsored") if raw.get("sponsored") in SPONSORED else "未見業配"

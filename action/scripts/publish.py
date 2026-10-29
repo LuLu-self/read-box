@@ -27,6 +27,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import places as pl  # noqa: E402
 import taxonomy  # noqa: E402
 import validate  # noqa: E402
 from common import clip  # noqa: E402
@@ -53,7 +54,8 @@ def load_json(p: Path, default=None):
 
 
 def map_url(place: dict) -> str:
-    q = " ".join(x for x in (place["name"], place.get("address") or place.get("area", ""), place.get("country", "")) if x)
+    where = place.get("address") or " ".join(x for x in (place.get("district", ""), place.get("city") or place.get("area", "")) if x)
+    q = " ".join(x for x in (place["name"], where, place.get("country", "")) if x)
     return "https://www.google.com/maps/search/?api=1&query=" + quote(q)
 
 
@@ -85,6 +87,7 @@ def clean_content(c: dict) -> dict:
         "chapters": chapters[:60], "has_video": bool(c.get("has_video")),
         "map_links": [u for u in (c.get("map_links") or []) if isinstance(u, str) and u.startswith("https://")][:20],
         "fetched_at": g("fetched_at", 40),
+        "host": g("host", 120).lower() if re.fullmatch(r"[A-Za-z0-9.-]{1,120}", c.get("host") or "") else "",
     }
 
 
@@ -103,6 +106,46 @@ def copy_images(src: Path, dest: Path) -> list[str]:
         shutil.copyfile(p, dest / p.name)
         out.append(p.name)
     return out
+
+
+def copy_favicon(art: Path, repo: Path, host: str) -> str | None:
+    """One icon per website, shared by every item from that site."""
+    from PIL import Image
+    src = art / "favicon.png"
+    if not host:
+        return None
+    dest = repo / "media" / "favicons" / f"{host}.png"
+    if dest.is_file():
+        return dest.relative_to(repo).as_posix()
+    if not src.is_file() or src.stat().st_size > 50_000:
+        return None
+    try:
+        with Image.open(src) as im:
+            im.verify()
+    except Exception:
+        return None
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(src, dest)
+    return dest.relative_to(repo).as_posix()
+
+
+def locations_of(e: dict) -> list[list[str]]:
+    """Every [country, city] an entry is about: AI locations, venue places and a 旅遊 sub-category."""
+    out: list[list[str]] = []
+
+    def add(country: str, city: str) -> None:
+        key = list(pl.location_key(country, city))
+        if key[0] and key not in out:
+            out.append(key)
+    for c, ci in (e.get("ai") or {}).get("locations") or []:
+        add(c, ci)
+    for p in e.get("places") or []:
+        add(p.get("country", ""), p.get("city") or p.get("area", ""))
+    if e.get("category") == "旅遊" and e.get("subcategory"):
+        parts = [x.strip() for x in e["subcategory"].split("›")]
+        add(parts[0], parts[1] if len(parts) > 1 else "")
+    # A bare country is redundant once one of its cities is listed.
+    return [k for k in out if k[1] or not any(o[0] == k[0] and o[1] for o in out)][:10]
 
 
 def fallback_title(c: dict, text: str) -> str:
@@ -161,7 +204,10 @@ def index_row(e: dict) -> dict:
         "thumb": e["images"][0] if e["images"] else None,
         "why": e.get("why", ""), "url": e["url"], "canonical_url": e["canonical_url"],
         "tags": {k: tags.get(k, [] if k != "budget" else "") for k in ("place_types", "seasons", "budget", "scenarios", "topics")},
-        "places": [{k: p[k] for k in ("name", "type", "country", "area", "map_url")} for p in e.get("places", [])],
+        "places": [{"name": p["name"], "type": p["type"], "country": p.get("country", ""),
+                    "city": p.get("city") or p.get("area", ""), "district": p.get("district", ""),
+                    "map_url": p["map_url"]} for p in e.get("places", [])],
+        "locations": locations_of(e), "favicon": e.get("favicon"),
         "sponsored": ai.get("sponsored", ""), "ai_ok": bool(ai),
     }
 
@@ -216,7 +262,10 @@ def publish_one(repo: Path, art: Path, item: dict, tax: dict) -> str:
     c = clean_content(load_json(art / "content.json", {}) or {})
     text = (art / "text.txt").read_text(encoding="utf-8", errors="replace") if (art / "text.txt").is_file() else ""
 
-    dup = find_duplicate(repo, c["canonical_url"], item_id)
+    # "redo_of": LuLu asked to re-run an existing entry; the result replaces it under the old id.
+    redo = cap.get("redo_of") if isinstance(cap.get("redo_of"), str) and ID_RE.match(cap["redo_of"]) else None
+    old = load_json(repo / "library" / f"{redo}.json") if redo else None
+    dup = None if old else find_duplicate(repo, c["canonical_url"], item_id)
     if dup:
         e = load_json(dup)
         e.setdefault("captures", []).append({"at": cap.get("captured_at"), "why": clip(cap.get("why") or "", 200)})
@@ -238,13 +287,21 @@ def publish_one(repo: Path, art: Path, item: dict, tax: dict) -> str:
     elif not ai_error and c["status"] != "failed":
         ai_error = "沒有 AI 摘要"
 
-    images = copy_images(art / "img", repo / "media" / item_id) if (art / "img").is_dir() else []
-    entry = build_entry(item_id, cap, c, text, summary, ai_error, images)
+    target = redo if old else item_id
+    if old:
+        shutil.rmtree(repo / "media" / target, ignore_errors=True)
+        cap = {**cap, "captured_at": old.get("captured_at"), "why": cap.get("why") or old.get("why", "")}
+    images = copy_images(art / "img", repo / "media" / target) if (art / "img").is_dir() else []
+    entry = build_entry(target, cap, c, text, summary, ai_error, images)
+    if old:
+        entry["captures"] = old.get("captures") or entry["captures"]
+        entry["redone_at"] = now_iso()
+    entry["favicon"] = copy_favicon(art, repo, c["host"]) if c["platform"] in ("web", "medium") else None
     entry["ai_run"] = ai_run_info(art)
     lib = repo / "library"
     lib.mkdir(exist_ok=True)
-    (lib / f"{item_id}.json").write_text(json.dumps(entry, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    (lib / f"{item_id}.txt").write_text(text, encoding="utf-8")
+    (lib / f"{target}.json").write_text(json.dumps(entry, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    (lib / f"{target}.txt").write_text(text, encoding="utf-8")
     move_capture(repo, item_id, "done")
     return "ok" if summary else "card"
 

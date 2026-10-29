@@ -83,6 +83,7 @@ class PageMeta(HTMLParser):
         self.meta: dict[str, str] = {}
         self.title = ""
         self.canonical = ""
+        self.icons: list[tuple[str, str]] = []
         self.jsonld: list[str] = []
         self._in_title = False
         self._in_ld = False
@@ -100,6 +101,8 @@ class PageMeta(HTMLParser):
             self._in_title, self._buf = True, []
         elif tag == "link" and a.get("rel", "").lower() == "canonical":
             self.canonical = a.get("href", "")
+        elif tag == "link" and any(t.endswith("icon") for t in a.get("rel", "").lower().split()) and a.get("href"):
+            self.icons.append((a.get("rel", "").lower(), a["href"]))
         elif tag == "script" and a.get("type", "").lower() == "application/ld+json":
             self._in_ld, self._buf = True, []
 
@@ -462,6 +465,7 @@ def fetch_web(r: dict) -> None:
         return
     page = decode(body, headers)
     pm = page_meta(page)
+    r["icon_candidates"] = icon_candidates(pm, final)
     r["canonical_url"] = canonical_url(pm.canonical or final) if pm.canonical.startswith("http") else canonical_url(final)
     import trafilatura
     doc = trafilatura.bare_extraction(page, url=final, with_metadata=True, favor_recall=True)
@@ -486,6 +490,33 @@ def fetch_web(r: dict) -> None:
         r["status"], r["basis"], r["reason"] = "partial", "試閱段", "付費或會員內容，只抓到試閱段"
     else:
         r["status"], r["basis"] = ("full", "全文") if text else ("preview", "標題與簡介")
+
+
+def icon_candidates(pm: PageMeta, base: str) -> list[str]:
+    """Site icon URLs, best first: apple-touch-icon (big, opaque), then png icons, then /favicon.ico."""
+    from urllib.parse import urljoin
+    ranked = sorted(pm.icons, key=lambda x: (0 if "apple-touch" in x[0] else 1 if x[1].lower().endswith(".png") else 2))
+    out = [urljoin(base, unescape(h)) for _, h in ranked]
+    out.append(urljoin(base, "/favicon.ico"))
+    return [u for u in dict.fromkeys(out) if u.startswith("https://")][:3]
+
+
+def download_favicon(urls: list[str], dest: Path) -> bool:
+    from PIL import Image
+    for u in urls:
+        try:
+            _, _, b = http_get(u, accept="image/png,image/x-icon,image/*;q=0.8")
+            if len(b) > 300_000:
+                continue
+            im = Image.open(io.BytesIO(b))
+            im.load()
+            im = im.convert("RGBA")
+            im.thumbnail((64, 64))
+            im.save(dest, "PNG", optimize=True)
+            return True
+        except Exception:
+            continue
+    return False
 
 
 # ---------------------------------------------------------------- images
@@ -551,6 +582,12 @@ def fetch(url: str, out: Path, pasted: str = "") -> dict:
     r["map_links"] = map_links(r["text"] + "\n" + r.get("description", ""))
     out.mkdir(parents=True, exist_ok=True)
     r["images"] = download_images(r["image_urls"], out / "img") if r["image_urls"] else []
+    host = (urlsplit(r.get("final_url") or url).hostname or "").lower()
+    r["host"] = host[4:] if host.startswith("www.") else host
+    if r["platform"] in ("web", "medium") and r["host"]:
+        cands = r.pop("icon_candidates", None) or [f"https://{host}/favicon.ico"]
+        download_favicon(cands, out / "favicon.png")
+    r.pop("icon_candidates", None)
     (out / "text.txt").write_text(r["text"], encoding="utf-8")
     r["text_chars"] = len(r.pop("text"))
     r["fetched_at"] = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
