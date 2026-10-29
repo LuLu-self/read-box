@@ -240,12 +240,25 @@ def publish_one(repo: Path, art: Path, item: dict, tax: dict) -> str:
 
     images = copy_images(art / "img", repo / "media" / item_id) if (art / "img").is_dir() else []
     entry = build_entry(item_id, cap, c, text, summary, ai_error, images)
+    entry["ai_run"] = ai_run_info(art)
     lib = repo / "library"
     lib.mkdir(exist_ok=True)
     (lib / f"{item_id}.json").write_text(json.dumps(entry, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (lib / f"{item_id}.txt").write_text(text, encoding="utf-8")
     move_capture(repo, item_id, "done")
     return "ok" if summary else "card"
+
+
+def ai_run_info(art: Path) -> dict:
+    """What happened in the Claude step, so a missing summary can be explained without the run log."""
+    cl = load_json(art / "claude.json", {}) or {}
+    run = (load_json(art / "run.json", {}) or {}).get("result") or {}
+    info = {"ran": bool(cl.get("token_set")), "token_set": cl.get("token_set"), "exit": cl.get("exit"),
+            "stderr_tail": clip(cl.get("stderr_tail") if isinstance(cl.get("stderr_tail"), str) else "", 400)}
+    if run:
+        info.update(is_error=run.get("is_error"), subtype=clip(str(run.get("subtype") or ""), 40),
+                    num_turns=run.get("num_turns"), result_text=clip(str(run.get("result_text") or ""), 300))
+    return info
 
 
 def git(repo: Path, *args: str) -> subprocess.CompletedProcess:

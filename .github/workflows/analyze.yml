@@ -142,7 +142,11 @@ jobs:
           set +e
           TOKEN="$CLAUDE_CODE_OAUTH_TOKEN"; unset CLAUDE_CODE_OAUTH_TOKEN
           # Without a token the item is still kept as a card (title, source, link).
-          [ -n "$TOKEN" ] || { echo "::warning::CLAUDE_CODE_OAUTH_TOKEN is not set; saving a card without AI summary"; exit 0; }
+          if [ -z "$TOKEN" ]; then
+            echo "::warning::CLAUDE_CODE_OAUTH_TOKEN is not set; saving a card without AI summary"
+            echo '{"token_set": false}' > "$STAGE/claude.json"
+            exit 0
+          fi
           S="$RB/action/scripts"
           TAX=(); [ -f "$GITHUB_WORKSPACE/taxonomy.json" ] && TAX=(--taxonomy "$GITHUB_WORKSPACE/taxonomy.json")
           chmod -R a-w "$IN"
@@ -154,10 +158,15 @@ jobs:
             --add-dir "$IN" --add-dir "$OUT"
             --allowedTools "Read(/$IN/**)" "Read(/$OUT/**)" "Edit(/$OUT/**)"
             --disallowedTools "Read(//proc/**)" "mcp__*")
-          claude_run() { CLAUDE_CODE_OAUTH_TOKEN="$TOKEN" claude "$@" "${FLAGS[@]}" < /dev/null; }
+          claude_run() { CLAUDE_CODE_OAUTH_TOKEN="$TOKEN" claude "$@" "${FLAGS[@]}" < /dev/null 2>> "$RUNNER_TEMP/claude.err"; }
           PROMPT=$(python3 "$S/prompt.py" --in "$IN" --out "$OUT" --why "$WHY" "${TAX[@]}")
           claude_run -p "$PROMPT" --max-turns 20 > "$RUNNER_TEMP/stream-0.jsonl"
-          echo "exit=$?" >> "$GITHUB_OUTPUT"
+          rc=$?
+          echo "exit=$rc" >> "$GITHUB_OUTPUT"
+          # Diagnostics for publish (the run log is not always reachable): exit code and the
+          # tail of stderr with the token masked.
+          TOKEN="$TOKEN" RC="$rc" python3 -c 'import json, os, pathlib; e = pathlib.Path(os.environ["RUNNER_TEMP"], "claude.err"); t = e.read_text(errors="replace")[-400:] if e.exists() else ""; t = t.replace(os.environ["TOKEN"], "***") if os.environ["TOKEN"] else t; pathlib.Path(os.environ["STAGE"], "claude.json").write_text(json.dumps({"token_set": True, "exit": int(os.environ["RC"]), "stderr_tail": t}, ensure_ascii=False))'
+
           python3 "$S/claude_stream.py" "$RUNNER_TEMP"/stream-*.jsonl "$STAGE/run.json"
           SID=$(jq -r '.result.session_id // empty' "$STAGE/run.json")
           if [ -n "$SID" ] && ! python3 "$S/validate.py" "$OUT/summary.json" "$IN/text.txt" "${TAX[@]}" > "$RUNNER_TEMP/errs.txt"; then
