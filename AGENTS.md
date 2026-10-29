@@ -17,7 +17,7 @@ LuLu 的個人文章收藏網站：把在 Threads、IG、FB、YouTube、一般�
 - `action/scripts/` — `items.py`（列 inbox）、`fetch.py`（各平台讀取，不用 AI）、`prompt.py`、`validate.py`、`publish.py`（唯一寫入）、`taxonomy.py`、`common.py`
 - `action/prompts/analyze.md` — 給 Claude 的提示詞
 - `.github/workflows/analyze.yml` — reusable workflow：plan → process（fetch＋Claude）→ publish
-- `web/` — 看板（GitHub Pages）：`index.html`＋`app.js`（列表、篩選、地點、收藏框、設定）、`read.html`＋`read.js`（單篇、標記、筆記）、`lib/data.mjs`（純函式）、`lib/gh.mjs`（GitHub API）
+- `web/` — 看板（GitHub Pages）：`index.html`＋`app.js`（列表、篩選、地點、收藏框、設定）、`read.html`＋`read.js`（單篇、標記、筆記）、`manage.html`＋`manage.js`（分類設定：新增／改名／刪除／排序／搬移，寫 taxonomy.json 與 state.json 覆寫）、`lib/data.mjs`、`lib/taxonomy.mjs`（純函式）、`lib/gh.mjs`（GitHub API）、`lib/ui.mjs`、`lib/brands.mjs`（Simple Icons，CC0）
 
 ## Constraints
 
@@ -26,6 +26,8 @@ LuLu 的個人文章收藏網站：把在 Threads、IG、FB、YouTube、一般�
 - 不登入、不繞過登入牆或機器人驗證、不批次爬取；只抓 LuLu 分享的那一頁。IG／FB／YouTube 照各平台條款；YouTube 只用官方 API 與 oEmbed，不下載影片。
 - 不存影片檔；圖片縮到長邊 1600px。
 - 測試資料一律自製，不把別人的貼文放進這個公開 repo。
+- LuLu 的修正（分類、地點）存在 state.json 的 override，優先於 AI，pipeline 不覆寫 state.json。
+- 讀不到內容又沒有任何標題時不收進來，放 inbox/failed，看板提醒。
 - 看板存 token 的頁面不載入任何第三方 JS；localStorage key 用 `readbox.*`，不可和 GitHub Box 的 `repobox.*` 共用。
 
 ## Conventions

@@ -11,6 +11,7 @@ const OUT = process.env.OUT || '/tmp';
 const puts = [];
 const deletes = [];
 let state = null;
+let taxonomy = null;
 
 // Synthetic items with places, so the place lens and export are exercised even on a library
 // that has no travel posts yet. They exist only inside this test.
@@ -67,13 +68,15 @@ async function mockGitHub(page) {
       const text = Buffer.from(body.content, 'base64').toString('utf8');
       puts.push({ rel, text });
       if (rel === 'state.json') state = text;
+      if (rel === 'taxonomy.json') taxonomy = text;
       return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ content: { sha: 'new' } }) });
     }
-    if (rel === 'state.json') {
-      if (!state) return route.fulfill({ status: 404, body: '{}' });
+    if (rel === 'state.json' || (rel === 'taxonomy.json' && taxonomy)) {
+      const cur = rel === 'state.json' ? state : taxonomy;
+      if (!cur) return route.fulfill({ status: 404, body: '{}' });
       const raw = (req.headers()['accept'] || '').includes('raw');
       return route.fulfill({ status: 200, contentType: 'application/json',
-        body: raw ? state : JSON.stringify({ sha: 'old', content: Buffer.from(state).toString('base64') }) });
+        body: raw ? cur : JSON.stringify({ sha: 'old', content: Buffer.from(cur).toString('base64') }) });
     }
     const file = path.join(LIB, rel);
     if (!fs.existsSync(file)) return route.fulfill({ status: 404, body: '{}' });
@@ -90,6 +93,8 @@ async function mockGitHub(page) {
   const check = (ok, msg) => { if (!ok) fails.push(msg); console.log(`${ok ? 'ok  ' : 'FAIL'} ${msg}`); };
   const index = JSON.parse(fs.readFileSync(path.join(LIB, 'index.json'), 'utf8'));
   index.items = [...SYN, ...index.items];
+  const taxFile = path.join(LIB, 'taxonomy.json');
+  if (fs.existsSync(taxFile)) taxonomy = fs.readFileSync(taxFile, 'utf8');
 
   for (const scheme of ['light', 'dark']) {
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, colorScheme: scheme, deviceScaleFactor: 2 });
@@ -179,7 +184,27 @@ async function mockGitHub(page) {
       await page.waitForFunction(() => document.body.textContent.includes('已送出'));
       const redo = JSON.parse(puts.filter((p) => p.rel.startsWith('inbox/')).at(-1).text);
       check(redo.redo_of === yt.id, 'redo capture written');
+      // Category manager: add 咖啡, then move one 收件匣 item into it.
+      page.on('dialog', (d) => d.accept());
+      await page.goto(base + '/manage.html');
+      await page.waitForSelector('.cat');
+      await page.fill('#new-cat', '咖啡');
+      await page.click('#add-cat');
+      await page.waitForFunction(() => document.getElementById('msg').textContent.includes('已新增'));
+      const tx = JSON.parse(taxonomy);
+      check(tx.categories.some((c) => c.name === '咖啡') && tx.categories.at(-1).name === '收件匣', 'new category saved before 收件匣');
+      await page.selectOption('#from-cat', '收件匣');
+      await page.locator('#move-list input').first().check();
+      await page.selectOption('#to-cat', '咖啡');
+      await page.click('#move-go');
+      await page.waitForFunction(() => document.getElementById('msg').textContent.includes('已搬'));
+      check(Object.values(JSON.parse(state).items).some((x) => x.override?.category === '咖啡'), 'moved item has 咖啡 override');
+      check(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'manage page no horizontal scroll');
+      await page.screenshot({ path: `${OUT}/manage-light.png`, fullPage: true });
+
       await page.goto(base + '/index.html');
+      await page.waitForSelector('.card');
+      check(await page.locator('#cats button', { hasText: '咖啡' }).count() === 1, 'board shows the new category with the moved item');
       await page.click('#l-place');
       await page.locator('#countries button', { hasText: '日本' }).click();
       await page.locator('#cities button', { hasText: '東京' }).click();

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <title>分類設定 · Read Box</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap">
+  <link rel="stylesheet" href="tokens.css">
+  <style>
+    h1 { margin: 0; font-size: 24px; font-weight: 900; }
+    .blk { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-radius: 14px; background: var(--sheet); }
+    .cat { display: flex; flex-direction: column; gap: 8px; padding: 10px 0; border-top: 1px solid var(--rule); }
+    .cat:first-of-type { border-top: 0; }
+    .cat-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .cat-head b { font-size: 16px; font-weight: 900; margin-right: auto; }
+    .cat-head small { color: var(--mute); font-weight: 400; }
+    .subs { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+    .subs button.sub { border: 1px solid var(--rule); border-radius: 999px; background: var(--paper); padding: 2px 10px; font-size: 13px; cursor: pointer; }
+    .add { display: flex; gap: 6px; }
+    .add input { flex: 1; min-width: 0; min-height: 36px; padding: 0 10px; border: 1.5px solid var(--rule); border-radius: 10px; background: var(--paper); }
+    .pick { display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow-y: auto; }
+    .pick label { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; padding: 6px 2px; border-bottom: 1px solid var(--rule); }
+    .pick label small { display: block; color: var(--mute); }
+    .pick input { margin-top: 4px; width: 18px; height: 18px; flex: none; }
+    .two { display: flex; gap: 8px; flex-wrap: wrap; }
+    .two select { flex: 1; min-width: 130px; }
+    #msg { font-size: 13px; }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <div class="top">
+      <a class="btn small" href="./">‹ 回列表</a>
+      <span class="muted" id="msg"></span>
+    </div>
+    <h1>分類設定</h1>
+    <p class="muted" style="margin:0;font-size:14px">新增、改名、刪除主分類和次分類，或把收藏搬到別的分類。改動會存到你的收藏庫，之後新收的文章也會照新的分類整理。</p>
+
+    <section class="blk">
+      <h2 class="label">主分類與次分類</h2>
+      <div id="cats"></div>
+      <div class="add">
+        <input id="new-cat" maxlength="20" placeholder="新增主分類，例如 咖啡" aria-label="新增主分類">
+        <button class="btn small go" id="add-cat" type="button">新增</button>
+      </div>
+    </section>
+
+    <section class="blk" id="suggest" hidden>
+      <h2 class="label" id="suggest-title">可能屬於這個分類</h2>
+      <p class="muted" style="margin:0;font-size:13px">依標題、重點、主題和「為什麼收」裡有沒有出現分類名稱找出來的，勾選確認後才會搬。</p>
+      <div class="pick" id="suggest-list"></div>
+      <div class="row-btns" style="margin:0">
+        <button class="btn small" id="suggest-skip" type="button">先不用</button>
+        <button class="btn small go" id="suggest-go" type="button">搬進來</button>
+      </div>
+    </section>
+
+    <section class="blk">
+      <h2 class="label">搬移收藏</h2>
+      <div class="two">
+        <select class="field" id="from-cat" aria-label="從哪個分類"></select>
+        <select class="field" id="from-sub" aria-label="哪個次分類"></select>
+      </div>
+      <div class="pick" id="move-list"></div>
+      <p class="muted" style="margin:0;font-size:13px">搬到：</p>
+      <div class="two">
+        <select class="field" id="to-cat" aria-label="搬到哪個分類"></select>
+        <select class="field" id="to-sub" aria-label="搬到哪個次分類"></select>
+      </div>
+      <div class="row-btns" style="margin:0">
+        <button class="btn small" id="pick-all" type="button">全選</button>
+        <button class="btn small go" id="move-go" type="button">搬過去</button>
+      </div>
+    </section>
+  </main>
+  <script type="module" src="manage.js"></script>
+</body>
+</html>
