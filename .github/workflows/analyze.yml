@@ -1,0 +1,246 @@
+name: readbox-analyze
+
+# Reusable workflow: read-box-library calls it pinned to a commit SHA and passes its secrets.
+# plan (list inbox) -> process (fetch, then Claude with no shell and no network) -> publish
+# (the only job that can write; it never runs AI and re-checks everything).
+on:
+  workflow_call:
+    inputs:
+      url:
+        description: one link to (re)process; empty = process inbox
+        type: string
+        required: false
+        default: ''
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN:
+        required: true
+      YOUTUBE_API_KEY:
+        required: false
+
+permissions:
+  contents: read
+
+env:
+  CLAUDE_CODE_VERSION: 2.1.302
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      items: ${{ steps.list.outputs.items }}
+    steps:
+      # Branch tip, not github.sha: a queued run must see what the previous run published.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.ref }}
+          sparse-checkout: inbox
+          persist-credentials: false
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .readbox
+          sparse-checkout: action
+          persist-credentials: false
+
+      - id: list
+        env:
+          INPUT_URL: ${{ inputs.url }}
+        run: |
+          set -euo pipefail
+          mkdir -p inbox
+          items=$(python3 .readbox/action/scripts/items.py --inbox inbox --url "$INPUT_URL" --run-id "$GITHUB_RUN_ID")
+          echo "items=$items" >> "$GITHUB_OUTPUT"
+          echo "$items" | jq -r '.[] | "\(.id)  \(.url) \(.error // "")"'
+
+  process:
+    needs: plan
+    if: needs.plan.outputs.items != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        item: ${{ fromJSON(needs.plan.outputs.items) }}
+    steps:
+      # $IN holds what was fetched (Claude may only read it); $OUT is the only place Claude may
+      # write; $STAGE is uploaded and lives outside both.
+      - name: Set paths
+        run: |
+          {
+            echo "IN=$RUNNER_TEMP/in"
+            echo "OUT=$RUNNER_TEMP/out"
+            echo "STAGE=$RUNNER_TEMP/stage"
+            echo "RB=$GITHUB_WORKSPACE/.readbox"
+          } >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/in" "$RUNNER_TEMP/out" "$RUNNER_TEMP/stage"
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.ref }}
+          sparse-checkout: |
+            inbox
+            taxonomy.json
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .readbox
+          sparse-checkout: action
+          persist-credentials: false
+
+      - name: Reject malformed capture
+        if: matrix.item.error != null
+        env:
+          ERR: ${{ matrix.item.error }}
+        run: python3 "$RB/action/scripts/status.py" "$STAGE/status.json" --status failed --stage capture --error "$ERR"
+
+      - name: Install fetch libraries
+        if: matrix.item.error == null
+        run: pip install --quiet --disable-pip-version-check trafilatura==2.0.0 pypdf==5.4.0 pillow==11.3.0
+
+      - name: Fetch
+        id: fetch
+        if: matrix.item.error == null
+        env:
+          ID: ${{ matrix.item.id }}
+          URL: ${{ matrix.item.url }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        run: |
+          set -uo pipefail
+          cap="inbox/$ID.json"
+          if [ -f "$cap" ]; then args=(--capture "$cap"); else args=(--url "$URL"); fi
+          python3 "$RB/action/scripts/fetch.py" "${args[@]}" --out "$IN" | tee "$RUNNER_TEMP/fetch.json"
+          st=$(jq -r .status "$RUNNER_TEMP/fetch.json" 2>/dev/null || echo failed)
+          echo "status=$st" >> "$GITHUB_OUTPUT"
+          WHY=""; [ -f "$cap" ] && WHY=$(jq -r '.why // ""' "$cap")
+          { echo "why<<__WHY__"; echo "$WHY"; echo "__WHY__"; } >> "$GITHUB_OUTPUT"
+
+      - name: Install Claude Code
+        if: steps.fetch.outputs.status != '' && steps.fetch.outputs.status != 'failed'
+        run: npm install -g "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION" && claude --version
+
+      # Hardening is in flags, not in the prompt: --restricted ignores settings files and
+      # confines file tools to the --add-dir set; no MCP, no Bash, no web tools, so text from a
+      # web page cannot make it run anything or send data anywhere. The token lives in an
+      # unexported variable handed only to `claude`.
+      - name: Summarize with Claude
+        id: claude
+        if: steps.fetch.outputs.status != '' && steps.fetch.outputs.status != 'failed'
+        timeout-minutes: 8
+        working-directory: ${{ runner.temp }}
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          DISABLE_AUTOUPDATER: '1'
+          WHY: ${{ steps.fetch.outputs.why }}
+        run: |
+          set +e
+          TOKEN="$CLAUDE_CODE_OAUTH_TOKEN"; unset CLAUDE_CODE_OAUTH_TOKEN
+          S="$RB/action/scripts"
+          TAX=(); [ -f "$GITHUB_WORKSPACE/taxonomy.json" ] && TAX=(--taxonomy "$GITHUB_WORKSPACE/taxonomy.json")
+          chmod -R a-w "$IN"
+          FLAGS=(--model sonnet --output-format stream-json --verbose
+            --restricted --permission-mode dontAsk
+            --tools Read Write Edit
+            --strict-mcp-config
+            --settings '{"permissions": {"blockReadsOutsideWorkingDirectories": true}}'
+            --add-dir "$IN" --add-dir "$OUT"
+            --allowedTools "Read(/$IN/**)" "Read(/$OUT/**)" "Edit(/$OUT/**)"
+            --disallowedTools "Read(//proc/**)" "mcp__*")
+          claude_run() { CLAUDE_CODE_OAUTH_TOKEN="$TOKEN" claude "$@" "${FLAGS[@]}" < /dev/null; }
+          PROMPT=$(python3 "$S/prompt.py" --in "$IN" --out "$OUT" --why "$WHY" "${TAX[@]}")
+          claude_run -p "$PROMPT" --max-turns 20 > "$RUNNER_TEMP/stream-0.jsonl"
+          echo "exit=$?" >> "$GITHUB_OUTPUT"
+          python3 "$S/claude_stream.py" "$RUNNER_TEMP"/stream-*.jsonl "$STAGE/run.json"
+          SID=$(jq -r '.result.session_id // empty' "$STAGE/run.json")
+          if [ -n "$SID" ] && ! python3 "$S/validate.py" "$OUT/summary.json" "$IN/text.txt" "${TAX[@]}" > "$RUNNER_TEMP/errs.txt"; then
+            FIX="Your $OUT/summary.json failed these checks; rewrite the whole file to fix them, nothing else:
+          $(cat "$RUNNER_TEMP/errs.txt")"
+            claude_run -p "$FIX" --resume "$SID" --max-turns 6 > "$RUNNER_TEMP/stream-1.jsonl"
+            python3 "$S/claude_stream.py" "$RUNNER_TEMP"/stream-*.jsonl "$STAGE/run.json"
+          fi
+          exit 0
+
+      - name: Stage outputs
+        if: matrix.item.error == null
+        env:
+          ID: ${{ matrix.item.id }}
+        run: |
+          set -uo pipefail
+          S="$RB/action/scripts"
+          [ -d "$IN" ] && cp -r "$IN"/. "$STAGE"/ 2>/dev/null
+          extra=$(find "$OUT" -mindepth 1 ! -name summary.json -printf '%P\n' | head -5)
+          if [ -n "$extra" ]; then
+            python3 "$S/status.py" "$STAGE/status.json" --status failed --stage ai --error "unexpected files: $extra"
+          else
+            [ -f "$OUT/summary.json" ] && cp "$OUT/summary.json" "$STAGE/summary.json"
+            python3 "$S/status.py" "$STAGE/status.json" --status ok
+          fi
+          {
+            echo "## $ID"
+            jq -r '"- \(.platform) \(.kind) fetch=\(.status) basis=\(.basis) via=\(.via) chars=\(.text_chars) reason=\(.reason // "-")"' "$STAGE/content.json" 2>/dev/null || echo "- no content.json"
+            echo "- summary.json: $([ -f "$STAGE/summary.json" ] && echo yes || echo no)"
+            jq -r '"- turns: \(.result.num_turns // "?")  cost: \(.result.total_cost_usd // "?")"' "$STAGE/run.json" 2>/dev/null || true
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Must not depend on the scripts checkout, which may be the step that failed.
+      - name: Record pipeline failure
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/stage"
+          [ -f "$RUNNER_TEMP/stage/status.json" ] || printf '%s\n' '{"status": "failed", "stage": "pipeline", "error": "pipeline: a workflow step failed or timed out"}' > "$RUNNER_TEMP/stage/status.json"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: rb-${{ matrix.item.id }}
+          path: ${{ runner.temp }}/stage
+          if-no-files-found: error
+
+  publish:
+    needs: [plan, process]
+    if: always() && needs.plan.result == 'success' && needs.plan.outputs.items != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.ref }}
+
+      # Scripts live outside the library worktree so they can never be committed.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .readbox-publish
+          sparse-checkout: action
+          persist-credentials: false
+
+      - name: Move scripts out of the worktree
+        run: |
+          mv "$GITHUB_WORKSPACE/.readbox-publish" "$RUNNER_TEMP/readbox"
+          mkdir -p "$RUNNER_TEMP/artifacts"
+          pip install --quiet --disable-pip-version-check pillow==11.3.0
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: rb-*
+          path: ${{ runner.temp }}/artifacts
+
+      - name: Publish to library
+        env:
+          ITEMS: ${{ needs.plan.outputs.items }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$ITEMS" > "$RUNNER_TEMP/items.json"
+          python3 "$RUNNER_TEMP/readbox/action/scripts/publish.py" --artifacts "$RUNNER_TEMP/artifacts" \
+            --repo "$GITHUB_WORKSPACE" --items "$RUNNER_TEMP/items.json" --push | tee "$RUNNER_TEMP/publish.json"
+          jq -r '"## publish\n- 分析完成: \(.ok)  只存卡片: \(.card)  重複: \(.dedup)  失敗: \(.failed) \(.failed_ids | join(", "))"' \
+            "$RUNNER_TEMP/publish.json" >> "$GITHUB_STEP_SUMMARY"
