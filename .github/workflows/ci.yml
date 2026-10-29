@@ -31,4 +31,4 @@ jobs:
       # Errors become annotations, so they show up on the run page without opening the log.
       - run: |
           docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12 \
-            -format '{{range $err := .}}::error file={{$err.Filepath}},line={{$err.Line}},col={{$err.Column}}::{{$err.Message}}{{"\n"}}{{end}}'
+            -format '{{range $err := .}}::error file={{$err.Filepath}},line={{$err.Line}},col={{$err.Column}}::{{$err.Message}}\n{{end}}'
