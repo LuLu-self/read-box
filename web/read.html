@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <title>Read Box</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap">
+  <link rel="stylesheet" href="tokens.css">
+  <style>
+    .src2 { font-size: 13px; color: var(--mute); overflow-wrap: anywhere; }
+    .src2 b { color: var(--ink); }
+    h1 { margin: 0; font-size: 26px; font-weight: 900; line-height: 1.3; text-wrap: balance; overflow-wrap: anywhere; }
+    .lead { margin: 0; font-size: 17px; font-weight: 700; }
+    .why { display: flex; gap: 10px; align-items: flex-start; margin: 0; padding: 10px 12px; border-radius: 14px; background: var(--sheet); font-size: 14px; }
+    .why .pill { flex: none; }
+    .notice { margin: 0; padding: 8px 12px; border-radius: 10px; background: var(--hi-tint); font-size: 13px; }
+    .gallery { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 4px; }
+    .gallery img { flex: none; width: min(86%, 420px); max-height: 60vh; object-fit: contain; border-radius: 12px; background: var(--ph); scroll-snap-align: start; }
+    .gallery:has(img:only-child) img { width: 100%; }
+    .vbtns { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .blk { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 14px; background: var(--sheet); min-width: 0; }
+    .blk ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+    .blk li { display: flex; gap: 8px; overflow-wrap: anywhere; }
+    .blk ul.dots li::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--ink); margin-top: 9px; flex: none; }
+    .chap a { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--go); text-decoration: none; flex: none; }
+    .place { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+    .place .nm { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+    .place .nm small { display: block; color: var(--mute); }
+    .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; font-size: 14px; }
+    .kv dt { font-weight: 700; }
+    .kv dd { margin: 0; overflow-wrap: anywhere; }
+    .clip { position: relative; margin-top: 10px; padding: 18px 14px 14px; border-radius: 4px; background: var(--note);
+      background-image: repeating-linear-gradient(var(--note) 0 25px, var(--note-line) 25px 26px); box-shadow: 0 1px 0 var(--rule); }
+    .clip::before { content: ""; position: absolute; top: -10px; left: 24px; width: 86px; height: 22px; background: var(--tape); opacity: .85; transform: rotate(-4deg); }
+    .clip h2 { margin: 0 0 4px; font-size: 14px; font-weight: 900; }
+    .clip blockquote { margin: 0 0 6px; line-height: 26px; }
+    .clip details { margin-top: 4px; }
+    .clip summary { cursor: pointer; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+    .fulltext { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 26px; margin: 6px 0 0; font-size: 15px; }
+    .badges { display: flex; gap: 6px; flex-wrap: wrap; }
+    .marks { display: flex; gap: 6px; flex-wrap: wrap; }
+    .marks button { border: 1.5px solid var(--line); border-radius: 999px; background: var(--sheet); padding: 4px 12px; font-size: 14px; cursor: pointer; }
+    .marks button[aria-pressed="true"] { background: var(--ink); color: var(--paper); font-weight: 700; }
+    .marks button.done[aria-pressed="true"] { background: var(--go); border-color: var(--go); color: var(--go-ink); }
+    .stars button { border: 0; background: none; font-size: 22px; cursor: pointer; color: var(--rule); padding: 0 2px; }
+    .stars button.on { color: var(--hi); }
+    #save-state { font-size: 13px; }
+  </style>
+</head>
+<body>
+  <main class="page" id="page">
+    <div class="top">
+      <a class="btn small" href="./" id="back">‹ 回列表</a>
+      <span class="chip" id="kind-chip" hidden></span>
+    </div>
+    <p class="muted" id="msg">載入中…</p>
+    <article id="art" hidden style="display:flex;flex-direction:column;gap:14px"></article>
+  </main>
+  <script type="module" src="read.js"></script>
+</body>
+</html>

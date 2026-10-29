@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <title>Read Box</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <meta name="theme-color" content="#ecf3f7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#141414" media="(prefers-color-scheme: dark)">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap">
+  <link rel="stylesheet" href="tokens.css">
+  <style>
+    .hello { font-size: 24px; font-weight: 900; line-height: 1.3; margin: 2px 0 0; text-wrap: balance; }
+    .hello em { font-style: normal; color: var(--hi); }
+
+    .capture { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 2px solid var(--line); border-radius: 14px; background: var(--sheet); }
+    .capture textarea { min-height: 52px; max-height: 40vh; resize: vertical; border: 0; padding: 4px 2px; background: transparent; font-size: 16px; outline: none; }
+    .capture .why { min-height: 38px; border: 1.5px solid var(--rule); border-radius: 10px; padding: 0 10px; background: var(--paper); font-size: 15px; }
+    .capture .bar { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+    .capture .hint { font-size: 13px; color: var(--mute); min-width: 0; }
+    #sent { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: 13px; }
+    #sent li { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+    #sent li span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mute); min-width: 0; }
+
+    .reread { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border: 2px solid var(--hi); border-radius: 14px; background: var(--sheet); text-decoration: none; }
+    .reread b { display: block; font-weight: 900; }
+    .reread .pill { flex: none; }
+    .reread div span { color: var(--mute); font-size: 13px; }
+
+    .search { display: flex; gap: 8px; align-items: center; }
+    .search input { flex: 1; min-width: 0; min-height: 40px; padding: 0 12px; border: 1.5px solid var(--line); border-radius: 999px; background: var(--sheet); }
+    .row { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+    .row::-webkit-scrollbar { display: none; }
+    .row button { flex: none; display: inline-flex; gap: 5px; align-items: baseline; border: 1.5px solid var(--line); border-radius: 999px; background: var(--sheet);
+      padding: 4px 12px; font-size: 14px; cursor: pointer; white-space: nowrap; }
+    .row button small { font-size: 11px; color: var(--mute); font-variant-numeric: tabular-nums; }
+    .row button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); font-weight: 700; }
+    .row button[aria-pressed="true"] small { color: inherit; }
+    .row.sub button { font-size: 13px; border-color: var(--rule); }
+    .row.sub button[aria-pressed="true"] { background: var(--sheet); color: var(--ink); border-color: var(--line); border-width: 2px; padding: 3.5px 11.5px; }
+    .fl { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; }
+    .fl .on { border: 1px solid var(--rule); border-radius: 999px; padding: 2px 10px; background: var(--sheet); cursor: pointer; }
+    .views { margin-left: auto; display: flex; gap: 4px; }
+    .views button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+    .cards { display: flex; flex-direction: column; gap: 10px; }
+    .card { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border: 1.5px solid var(--line); border-radius: 14px; background: var(--sheet);
+      min-width: 0; text-decoration: none; color: inherit; }
+    .card .src { font-size: 12px; color: var(--mute); display: flex; justify-content: space-between; gap: 8px; }
+    .card .src b { color: var(--ink); font-weight: 700; }
+    .card .src span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+    .card .tl { font-size: 16px; font-weight: 900; line-height: 1.4; overflow-wrap: anywhere; }
+    .card .ol { font-size: 14px; color: var(--mute); overflow-wrap: anywhere; }
+    .card .tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .card .tags span:not(.pill) { font-size: 12px; border: 1px solid var(--rule); border-radius: 6px; padding: 0 7px; color: var(--mute); }
+    .card[data-m] { border-left-width: 6px; padding-left: 10px; }
+    .card[data-m="讀過"] { border-left-color: var(--m-read); }
+    .card[data-m="有用"] { border-left-color: var(--ink); }
+    .card[data-m="實踐過"] { border-left-color: var(--go); background: var(--go-tint); }
+    .card[data-m="封存"] { border-left-color: var(--m-arch); opacity: .7; }
+    .card.pending { border-style: dashed; }
+
+    .places { display: flex; flex-direction: column; gap: 6px; }
+    .place { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 12px; background: var(--sheet); font-size: 14px; }
+    .place .nm { flex: 1; min-width: 0; }
+    .place .nm b { display: block; overflow-wrap: anywhere; }
+    .place .nm a { font-size: 12px; color: var(--mute); }
+
+    .empty { padding: 24px 8px; text-align: center; color: var(--mute); }
+    .stats { font-size: 12px; color: var(--mute); text-align: center; }
+
+    .sheet-group { margin-top: 12px; }
+    .sheet-group h3 { margin: 0 0 6px; font-size: 14px; font-weight: 900; }
+    .sheet-group .row { flex-wrap: wrap; overflow: visible; }
+    details.tools { font-size: 13px; color: var(--mute); }
+    details.tools code { overflow-wrap: anywhere; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <div class="top">
+      <a class="mark" href="./"><i>R</i>Read Box</a>
+      <button class="chip" id="settings-btn" type="button"><span class="dot"></span><span id="conn">還沒連結</span></button>
+    </div>
+
+    <p class="hello" id="hello">把讀過、以後用得到的<br><em>收</em>進來</p>
+
+    <form class="capture" id="capture">
+      <textarea id="links" aria-label="貼上連結" placeholder="貼上連結，可以一次貼很多個；沒有連結的文字會存成筆記"></textarea>
+      <input class="why" id="why" maxlength="200" aria-label="為什麼收（選填）" placeholder="為什麼收（選填）">
+      <div class="bar">
+        <span class="hint" id="cap-hint"></span>
+        <button class="btn go" id="cap-btn" type="submit">收進來</button>
+      </div>
+      <ul id="sent"></ul>
+    </form>
+
+    <a class="reread" id="reread" hidden></a>
+
+    <div class="search"><input id="q" type="search" placeholder="搜尋標題、重點、地點、為什麼收" aria-label="搜尋"></div>
+    <div class="row" id="cats" aria-label="主分類"></div>
+    <div class="row sub" id="subs" aria-label="次分類" hidden></div>
+    <div class="row sub" id="areas" aria-label="地區" hidden></div>
+    <div class="fl">
+      <button class="btn small" id="filter-btn" type="button">篩選</button>
+      <span id="active"></span>
+      <span class="views">
+        <button class="btn small" id="v-cards" type="button" aria-pressed="true">文章</button>
+        <button class="btn small" id="v-places" type="button" aria-pressed="false">地點</button>
+      </span>
+    </div>
+
+    <div class="cards" id="list"></div>
+    <p class="stats" id="stats"></p>
+  </main>
+
+  <dialog id="filters">
+    <h2>篩選</h2>
+    <div class="sheet-group"><h3>來源</h3><div class="row" id="f-platforms"></div></div>
+    <div class="sheet-group"><h3>我的標記</h3><div class="row" id="f-marks"></div></div>
+    <div class="sheet-group"><h3>地點類型</h3><div class="row" id="f-places"></div></div>
+    <div class="sheet-group"><h3>讀取狀態</h3><div class="row" id="f-read"></div></div>
+    <div class="row-btns">
+      <button class="btn small" id="f-clear" type="button">全部清除</button>
+      <button class="btn small go" id="f-done" type="button">完成</button>
+    </div>
+  </dialog>
+
+  <dialog id="settings">
+    <h2>連結收藏庫</h2>
+    <p class="muted" style="margin:0;font-size:14px">token 只存在這台裝置的瀏覽器裡，不會傳到 GitHub 以外的地方。</p>
+    <label for="s-repo">收藏庫</label>
+    <input class="field" id="s-repo" autocomplete="off" spellcheck="false">
+    <label for="s-token">GitHub token（只勾 read-box-library，Contents：Read and write）</label>
+    <input class="field" id="s-token" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_…">
+    <p class="err" id="s-err" style="font-size:13px;margin:8px 0 0"></p>
+    <details class="tools">
+      <summary>iPhone 捷徑與電腦書籤</summary>
+      <p>iPhone 捷徑網址（後面接上 URL 編碼後的連結）：<br><code id="s-shortcut"></code></p>
+      <p>電腦書籤：把這個按鈕拖到書籤列，看到好文章時按一下：<a class="btn small" id="s-bookmarklet">收進 Read Box</a></p>
+    </details>
+    <div class="row-btns">
+      <button class="btn small" id="s-logout" type="button">登出這台裝置</button>
+      <button class="btn small" id="s-cancel" type="button">取消</button>
+      <button class="btn small go" id="s-save" type="button">儲存</button>
+    </div>
+  </dialog>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

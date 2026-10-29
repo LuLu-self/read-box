@@ -10,14 +10,14 @@ LuLu 的個人文章收藏網站：把在 Threads、IG、FB、YouTube、一般�
 - 原生 HTML／CSS／ES modules（看板，無 build、無第三方 JS）
 - GitHub Actions reusable workflow + GitHub Pages
 - 資料：私人 repo `read-box-library`（`library/<id>.json|txt`、`media/<id>/`、`index.json`、`taxonomy.json`）
-- Test：`python3 -m unittest discover -s action/tests`
+- Test：`python3 -m unittest discover -s action/tests && node --test 'web/tests/*.test.mjs'`；看板 e2e：`LIB=<read-box-library 路徑> node web/tests/e2e/board.cjs`（GitHub API 用 mock）
 
 ## File layout
 
 - `action/scripts/` — `items.py`（列 inbox）、`fetch.py`（各平台讀取，不用 AI）、`prompt.py`、`validate.py`、`publish.py`（唯一寫入）、`taxonomy.py`、`common.py`
 - `action/prompts/analyze.md` — 給 Claude 的提示詞
 - `.github/workflows/analyze.yml` — reusable workflow：plan → process（fetch＋Claude）→ publish
-- `web/` — 看板（GitHub Pages）
+- `web/` — 看板（GitHub Pages）：`index.html`＋`app.js`（列表、篩選、地點、收藏框、設定）、`read.html`＋`read.js`（單篇、標記、筆記）、`lib/data.mjs`（純函式）、`lib/gh.mjs`（GitHub API）
 
 ## Constraints
 
