@@ -1,0 +1,6 @@
+# job.workflow_repository / job.workflow_sha exist on GitHub (they name this reusable workflow's
+# own repo and commit) but actionlint 1.7.12 does not know them yet.
+paths:
+  .github/workflows/analyze.yml:
+    ignore:
+      - 'property "workflow_(sha|repository)" is not defined'
