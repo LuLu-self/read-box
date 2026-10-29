@@ -511,6 +511,18 @@ def download_images(urls: list[str], dest: Path) -> list[str]:
     return saved
 
 
+def slug_title(url: str) -> str:
+    """Best-effort title from the last path segment, for pages that could not be read."""
+    from urllib.parse import unquote
+    seg = [p for p in urlsplit(url).path.split("/") if p]
+    if not seg:
+        return ""
+    words = re.sub(r"-[0-9a-f]{8,12}$", "", unquote(seg[-1]))
+    words = re.sub(r"\.(html?|php|aspx?)$", "", words)
+    words = " ".join(w for w in re.split(r"[-_]+", words) if w)
+    return words[:80] if re.search(r"[A-Za-z\u3400-\u9fff]{2,}", words) else ""
+
+
 # ---------------------------------------------------------------- main
 
 FETCHERS = {"threads": fetch_threads, "instagram": fetch_instagram, "facebook": fetch_facebook,
@@ -530,6 +542,8 @@ def fetch(url: str, out: Path, pasted: str = "") -> dict:
             r["status"], r["reason"] = "failed", e.reason
         except Exception as e:  # parsers meet arbitrary pages; record and keep the card
             r["status"], r["reason"] = "failed", f"讀取時出錯（{type(e).__name__}）"
+    if not r["title"] and r["platform"] in ("web", "medium"):
+        r["title"] = slug_title(r["final_url"] or url)
     # Text LuLu pasted (paywalled article, a note) wins when it is longer than what was fetched.
     if pasted.strip() and len(pasted.strip()) > len((r.get("text") or "").strip()):
         r.update(text=pasted.strip(), status="full", basis="貼上的文字", reason=None)

@@ -108,7 +108,8 @@ def copy_images(src: Path, dest: Path) -> list[str]:
 def fallback_title(c: dict, text: str) -> str:
     if c["title"]:
         return clip(c["title"], 60)
-    first = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
+    first = next((ln.strip() for ln in text.splitlines()
+                  if re.search(r"[A-Za-z0-9\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]", ln)), "")
     if first:
         return clip(first, 40)
     who = c["author"] or c["handle"]
