@@ -76,17 +76,51 @@ function countBy(list, key) {
   return [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh-Hant'));
 }
 
+// [country, city] pairs an item is about. index.json carries them; older rows fall back to places and
+// the 旅遊 "國家 › 城市" sub-category.
+export function locationsOf(i) {
+  if (Array.isArray(i.locations) && i.locations.length) return i.locations;
+  const out = [];
+  const add = (c, ci) => { if (c && !out.some((o) => o[0] === c && o[1] === (ci || ''))) out.push([c, ci || '']); };
+  for (const p of i.places || []) add(p.country, p.city || p.area);
+  if (i.category === '旅遊') { const [c, ci] = splitSub(i.subcategory); add(c, ci); }
+  return out;
+}
+
+const cityOf = (p) => p.city || p.area || '';
+const inLocation = (p, f) => (!f.country || p.country === f.country) && (!f.city || cityOf(p) === f.city);
+
+// LuLu's corrections in state.json win over what the AI wrote.
+export function withOverrides(items, state) {
+  return items.map((i) => {
+    const o = state?.items?.[i.id]?.override;
+    if (!o) return i;
+    return { ...i, category: o.category || i.category, subcategory: o.subcategory ?? i.subcategory,
+      locations: Array.isArray(o.locations) && o.locations.length ? o.locations : i.locations, overridden: true };
+  });
+}
+
+function matchesLocation(i, f) {
+  if (!f.country) return true;
+  return locationsOf(i).some(([c, ci]) => c === f.country && (!f.city || ci === f.city));
+}
+
 // Options for each filter row, counted over what the earlier rows already selected.
 export function facets(items, f, categories = []) {
   const inCat = f.category ? items.filter((i) => i.category === f.category) : items;
   const level1 = countBy(inCat, (i) => splitSub(i.subcategory)[0]);
   const inSub = f.sub ? inCat.filter((i) => splitSub(i.subcategory)[0] === f.sub) : [];
   const level2 = f.sub ? countBy(inSub, (i) => splitSub(i.subcategory)[1]) : [];
-  const cats = countBy(items, (i) => i.category);
+  const cats = countBy(f.lens === 'place' ? items.filter((i) => matchesLocation(i, f)) : items, (i) => i.category);
   const order = new Map(categories.map((c, n) => [c, n]));
   cats.sort((a, b) => (order.get(a[0]) ?? 99) - (order.get(b[0]) ?? 99));
+  const pool = f.lens === 'place' ? items : inCat;
+  const countries = countBy(pool.flatMap((i) => [...new Set(locationsOf(i).map((l) => l[0]))]), (c) => c);
+  const cities = f.country ? countBy(pool.flatMap((i) => [...new Set(locationsOf(i).filter((l) => l[0] === f.country && l[1]).map((l) => l[1]))]), (c) => c) : [];
+  const here = pool.filter((i) => matchesLocation(i, f) && (f.lens !== 'place' || !f.category || i.category === f.category));
+  const types = countBy(here.flatMap((i) => (i.places || []).filter((p) => inLocation(p, f)).map((p) => p.type)), (t) => t);
   return {
-    categories: cats, subs: level1, areas: level2,
+    categories: cats, subs: level1, areas: level2, countries, cities, types,
     platforms: countBy(items, (i) => i.platform),
     placeTypes: countBy(items.flatMap((i) => i.tags?.place_types || []), (t) => t),
   };
@@ -94,7 +128,9 @@ export function facets(items, f, categories = []) {
 
 function haystack(i) {
   return [i.title, i.one_line, i.why, i.author, i.handle, i.site_name, i.category, i.subcategory,
-    ...(i.tags?.topics || []), ...(i.tags?.scenarios || []), ...(i.places || []).map((p) => `${p.name} ${p.area} ${p.country}`)]
+    ...(i.tags?.topics || []), ...(i.tags?.scenarios || []),
+    ...(i.places || []).map((p) => `${p.name} ${p.district || ''} ${cityOf(p)} ${p.country}`),
+    ...locationsOf(i).map((l) => l.join(' '))]
     .join(' ').toLowerCase();
 }
 
@@ -102,9 +138,13 @@ export function applyFilter(items, f, state) {
   const q = String(f.q || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
   return items.filter((i) => {
     if (f.category && i.category !== f.category) return false;
-    const [s1, s2] = splitSub(i.subcategory);
-    if (f.sub && s1 !== f.sub) return false;
-    if (f.area && s2 !== f.area) return false;
+    if (f.lens !== 'place') {
+      const [s1, s2] = splitSub(i.subcategory);
+      if (f.sub && s1 !== f.sub) return false;
+      if (f.area && s2 !== f.area) return false;
+    }
+    if (!matchesLocation(i, f)) return false;
+    if (f.types?.length && !(i.places || []).some((p) => inLocation(p, f) && f.types.includes(p.type))) return false;
     if (f.platforms?.length && !f.platforms.includes(i.platform)) return false;
     if (f.marks?.length && !f.marks.includes(markOf(state, i.id))) return false;
     if (!f.marks?.includes('封存') && markOf(state, i.id) === '封存') return false;
@@ -115,16 +155,35 @@ export function applyFilter(items, f, state) {
   });
 }
 
-// Every place across the filtered items, with the article it came from.
-export function placesOf(items, placeTypes = []) {
+// Every place across the filtered items that sits in the chosen country/city, with its article.
+export function placesOf(items, f = {}) {
+  const types = [...(f.types || []), ...(f.placeTypes || [])];
   const out = [];
   for (const i of items) {
     for (const p of i.places || []) {
-      if (placeTypes.length && !placeTypes.includes(p.type)) continue;
-      out.push({ ...p, from: i.id, fromTitle: i.title });
+      if (!inLocation(p, f)) continue;
+      if (types.length && !types.includes(p.type)) continue;
+      out.push({ ...p, city: cityOf(p), from: i.id, fromTitle: i.title });
     }
   }
-  return out.sort((a, b) => `${a.country}${a.area}${a.type}`.localeCompare(`${b.country}${b.area}${b.type}`, 'zh-Hant'));
+  return out.sort((a, b) => `${a.country}${a.city}${a.type}${a.name}`.localeCompare(`${b.country}${b.city}${b.type}${b.name}`, 'zh-Hant'));
+}
+
+// Google My Maps imports CSV with a location column (address or place name) and a title column;
+// at most 2,000 rows per file (support.google.com/mymaps/answer/3024836).
+export const MYMAPS_MAX_ROWS = 2000;
+export function myMapsCsv(places, boardUrl = '') {
+  const cell = (v) => {
+    const t = String(v ?? '').replace(/\r?\n/g, ' ');
+    // A leading = + - @ would run as a formula if the file is opened in a spreadsheet.
+    const safe = /^[=+\-@]/.test(t) ? `'${t}` : t;
+    return /[",]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
+  };
+  const head = ['名稱', '地址', '類型', '國家', '城市', '區域', '出自', '文章連結', 'Google 地圖'];
+  const rows = places.slice(0, MYMAPS_MAX_ROWS).map((p) => [p.name,
+    p.address || [p.name, p.district, p.city, p.country].filter(Boolean).join(' '),
+    p.type, p.country, p.city, p.district || '', p.fromTitle, boardUrl ? `${boardUrl}read.html#${p.from}` : '', p.map_url || '']);
+  return '\ufeff' + [head, ...rows].map((r) => r.map(cell).join(',')).join('\r\n') + '\r\n';
 }
 
 // Items marked 有用 or 實踐過 that LuLu has not touched for 30 days come back as 該重讀了.

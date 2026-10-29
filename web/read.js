@@ -1,23 +1,12 @@
 'use strict';
 
-import { loadCfg, getJson, getText, getBlobUrl, updateJson } from './lib/gh.mjs';
-import { safeUrl, shortDate, duration, youtubeAt, MARKS, PLATFORM_LABEL, KIND_LABEL, BASIS_NOTE } from './lib/data.mjs';
+import { loadCfg, getJson, getText, getBlobUrl, updateJson, putFile } from './lib/gh.mjs';
+import { safeUrl, shortDate, duration, youtubeAt, makeId, isoLocal, MARKS, PLATFORM_LABEL, KIND_LABEL, BASIS_NOTE } from './lib/data.mjs';
+import { el, brandMark } from './lib/ui.mjs';
 
 const $ = (id) => document.getElementById(id);
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9-]{0,63}$/;
 const PIN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>';
-
-function el(tag, attrs = {}, ...kids) {
-  const n = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (v == null || v === false) continue;
-    if (k === 'text') n.textContent = v;
-    else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
-    else n.setAttribute(k, v === true ? '' : v);
-  }
-  for (const k of kids.flat()) if (k != null && k !== false && k !== '') n.append(k);
-  return n;
-}
 
 const ext = (href, text, cls) => (safeUrl(href) ? el('a', { href: safeUrl(href), target: '_blank', rel: 'noopener noreferrer', class: cls, text }) : null);
 
@@ -75,6 +64,69 @@ function markBlock(cfg, id) {
   return section('我的標記', marks, stars, note, el('div', { class: 'row-btns', style: 'margin:0;justify-content:space-between;align-items:center' }, status, saveNote));
 }
 
+// ------------------------------------------------------------------ fix category / place
+
+const DEFAULT_CATS = ['旅遊', '美食', '運動', '健康', '語言', '生活', '工作', '學習成長', '心理', '人際關係', '理財', '科技與 AI', '收件匣'];
+
+// LuLu's corrections go to state.json as an override; the AI result stays untouched underneath.
+function fixBlock(cfg, e, categories) {
+  const cur = state.items?.[e.id]?.override || {};
+  const loc0 = cur.locations?.[0] || (e.locations?.[0]) || [];
+  const cat = el('select', { class: 'field', id: 'fx-cat' },
+    ...(categories.length ? categories : DEFAULT_CATS).map((c) => el('option', { value: c, text: c })));
+  cat.value = cur.category || e.category;
+  const sub = el('input', { class: 'field', id: 'fx-sub', maxlength: '20', placeholder: '次分類（可空白）' });
+  sub.value = (cur.subcategory ?? e.subcategory ?? '').includes('›') ? '' : (cur.subcategory ?? e.subcategory ?? '');
+  const country = el('input', { class: 'field', id: 'fx-country', maxlength: '20', placeholder: '國家，例如 日本' });
+  const city = el('input', { class: 'field', id: 'fx-city', maxlength: '30', placeholder: '城市，例如 大阪' });
+  country.value = loc0[0] || ''; city.value = loc0[1] || '';
+  const msg = el('span', { class: 'muted', style: 'font-size:13px' });
+  const dlg = el('dialog', {},
+    el('h2', { text: '改分類／改地點' }),
+    el('p', { class: 'muted', style: 'margin:0;font-size:13px', text: '你改的會優先於 AI，之後重新整理這篇也不會被蓋掉。' }),
+    el('label', { for: 'fx-cat', text: '主分類' }), cat,
+    el('label', { for: 'fx-sub', text: '次分類' }), sub,
+    el('label', { for: 'fx-country', text: '地點' }),
+    el('div', { style: 'display:flex;gap:8px' }, country, city),
+    el('div', { class: 'row-btns' }, msg,
+      el('button', { class: 'btn small', type: 'button', text: '恢復 AI 的分類', onclick: () => save(null) }),
+      el('button', { class: 'btn small', type: 'button', text: '取消', onclick: () => dlg.close() }),
+      el('button', { class: 'btn small go', type: 'button', text: '儲存', onclick: () => {
+        const c = country.value.trim(), ci = city.value.trim();
+        const subVal = cat.value === '旅遊' ? [c, ci].filter(Boolean).join(' › ') : sub.value.trim();
+        save({ category: cat.value, subcategory: subVal, locations: c ? [[c, ci]] : [] });
+      } })));
+  async function save(override) {
+    msg.textContent = '儲存中…';
+    const res = await updateJson(cfg, 'state.json', (s) => {
+      s.v = 1; s.items = s.items || {};
+      const item = { ...(s.items[e.id] || {}), updated_at: new Date().toISOString() };
+      if (override) item.override = override; else delete item.override;
+      s.items[e.id] = item;
+      return s;
+    }, `fix: ${e.id}`, { v: 1, items: {} });
+    if (res.ok) location.reload();
+    else msg.textContent = '沒存到，請再試一次';
+  }
+  document.body.append(dlg);
+  return el('button', { class: 'btn small', type: 'button', text: '改分類／改地點', onclick: () => dlg.showModal() });
+}
+
+// Re-run fetch + AI for this item: a capture with redo_of replaces the entry under the same id.
+function redoButton(cfg, e) {
+  const btn = el('button', { class: 'btn small', type: 'button', text: '重新整理這篇' });
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    const now = new Date();
+    const cap = { v: 1, url: e.url || '', captured_at: isoLocal(now), why: '', text: '', client: 'board@1', redo_of: e.id };
+    if (!cap.url) { btn.textContent = '筆記不用重新整理'; return; }
+    const res = await putFile(cfg, `inbox/${makeId(now)}.json`, JSON.stringify(cap, null, 2) + '\n', `redo: ${e.id}`);
+    btn.textContent = res.ok ? '已送出，約 2–5 分鐘後重新整理頁面' : '沒送出，請再試一次';
+    if (!res.ok) btn.disabled = false;
+  });
+  return btn;
+}
+
 // ------------------------------------------------------------------ page
 
 async function main() {
@@ -82,13 +134,16 @@ async function main() {
   const cfg = loadCfg();
   if (!cfg) { $('msg').textContent = '還沒連結收藏庫，請回首頁按右上角設定。'; return; }
   if (!ID_RE.test(id)) { $('msg').textContent = '找不到這篇收藏。'; return; }
-  const [entry, st] = await Promise.all([getJson(cfg, `library/${id}.json`), getJson(cfg, 'state.json')]);
+  const [entry, st, tax] = await Promise.all([getJson(cfg, `library/${id}.json`), getJson(cfg, 'state.json'), getJson(cfg, 'taxonomy.json')]);
   if (!entry.data) {
     $('msg').textContent = entry.status === 404 ? '找不到這篇收藏，可能還在整理中。' : entry.status === 401 ? 'token 失效，請回首頁重新設定。' : '暫時連不到 GitHub。';
     return;
   }
   state = st.data || { items: {} };
-  const e = entry.data;
+  const e = { ...entry.data };
+  const o = state.items?.[e.id]?.override;
+  if (o) Object.assign(e, { category: o.category || e.category, subcategory: o.subcategory ?? e.subcategory,
+    locations: o.locations?.length ? o.locations : e.locations, overridden: true });
   const ai = e.ai || {};
   document.title = `${e.title} · Read Box`;
   $('msg').hidden = true;
@@ -98,7 +153,7 @@ async function main() {
 
   const who = [e.author, e.handle && e.platform !== 'web' ? `@${e.handle}` : ''].filter(Boolean).join(' ');
   const srcLine = el('div', { class: 'src2' },
-    el('b', { text: e.platform === 'web' ? (e.site_name || '網站') : (PLATFORM_LABEL[e.platform] || '') }),
+    brandMark(e, cfg),
     who ? ` · ${who}` : '', e.published_at ? ` · 發布 ${shortDate(e.published_at)}` : '', ` · 收藏 ${shortDate(e.captured_at)}`,
     e.captures?.length > 1 ? ` · 收過 ${e.captures.length} 次` : '');
 
@@ -150,7 +205,8 @@ async function main() {
 
   const tags = [...(ai.tags?.topics || []), ...(ai.tags?.scenarios || []), ...(ai.tags?.seasons || []), ai.tags?.budget].filter(Boolean);
   const badges = el('div', { class: 'badges' },
-    e.category ? el('span', { class: 'pill dark', text: [e.category, e.subcategory].filter(Boolean).join(' › ') }) : null,
+    e.category ? el('span', { class: 'pill dark', text: [e.category, e.category === '旅遊' ? '' : e.subcategory].filter(Boolean).join(' › ') }) : null,
+    ...(e.locations || []).map((l) => el('span', { class: 'pill dark', text: `📍${l.filter(Boolean).join(' › ')}` })),
     ai.confidence && ai.confidence !== '高' ? el('span', { class: 'pill soft', text: `分類把握：${ai.confidence}` }) : null,
     ai.nature ? el('span', { class: 'pill soft', text: ai.nature }) : null,
     ai.sponsored === '可能業配' ? el('span', { class: 'pill', text: '可能業配' }) : null,
@@ -178,6 +234,9 @@ async function main() {
   parts.push(clip);
 
   parts.push(markBlock(cfg, e.id));
+  const cats = (tax.data?.categories || []).map((c) => c.name);
+  parts.push(el('div', { class: 'vbtns' }, fixBlock(cfg, e, cats), redoButton(cfg, e),
+    e.overridden ? el('span', { class: 'muted', style: 'font-size:13px', text: '分類／地點是你改過的' }) : null));
   art.replaceChildren(...parts);
   art.hidden = false;
 }

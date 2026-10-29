@@ -40,6 +40,7 @@ KINDS = {"social", "video", "article", "bookmark", "pdf", "note"}
 CAREFUL = {"健康": "健康資訊僅供參考，數字與建議請和醫師或專業人員確認。",
            "理財": "理財資訊僅供參考，數字與建議請和專業人員確認。"}
 ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{0,63}$")
+SKIP_REASON = "讀不到內容，也沒有任何標題資訊，所以沒有收進來"
 
 
 def now_iso() -> str:
@@ -262,6 +263,12 @@ def publish_one(repo: Path, art: Path, item: dict, tax: dict) -> str:
     c = clean_content(load_json(art / "content.json", {}) or {})
     text = (art / "text.txt").read_text(encoding="utf-8", errors="replace") if (art / "text.txt").is_file() else ""
 
+    # LuLu's rule (2026-10-29): nothing readable and not even a title -> do not keep a card;
+    # the capture goes to inbox/failed and the board tells her.
+    if c["status"] == "failed" and not c["title"]:
+        move_capture(repo, item_id, "failed", f"{SKIP_REASON}（{c['reason'] or '讀不到'}）")
+        return "skipped"
+
     # "redo_of": LuLu asked to re-run an existing entry; the result replaces it under the old id.
     redo = cap.get("redo_of") if isinstance(cap.get("redo_of"), str) and ID_RE.match(cap["redo_of"]) else None
     old = load_json(repo / "library" / f"{redo}.json") if redo else None
@@ -297,6 +304,7 @@ def publish_one(repo: Path, art: Path, item: dict, tax: dict) -> str:
         entry["captures"] = old.get("captures") or entry["captures"]
         entry["redone_at"] = now_iso()
     entry["favicon"] = copy_favicon(art, repo, c["host"]) if c["platform"] in ("web", "medium") else None
+    entry["locations"] = locations_of(entry)
     entry["ai_run"] = ai_run_info(art)
     lib = repo / "library"
     lib.mkdir(exist_ok=True)
@@ -356,7 +364,7 @@ def main(argv: list[str]) -> int:
     a = ap.parse_args(argv)
     items = load_json(a.items, []) or []
     tax = taxonomy.load(a.repo / "taxonomy.json")
-    counts = {"ok": 0, "card": 0, "dedup": 0, "failed": 0}
+    counts = {"ok": 0, "card": 0, "dedup": 0, "skipped": 0, "failed": 0}
     failed_ids = []
     for item in items:
         if not isinstance(item, dict) or not ID_RE.match(str(item.get("id", ""))):
@@ -367,7 +375,8 @@ def main(argv: list[str]) -> int:
             failed_ids.append(item["id"])
     rebuild_index(a.repo)
     if a.push:
-        push(a.repo, f"readbox: {counts['ok']} analyzed, {counts['card']} cards, {counts['dedup']} dup, {counts['failed']} failed")
+        push(a.repo, f"readbox: {counts['ok']} analyzed, {counts['card']} cards, {counts['dedup']} dup, "
+                     f"{counts['skipped']} skipped, {counts['failed']} failed")
     print(json.dumps({**counts, "failed_ids": failed_ids}, ensure_ascii=False))
     return 0
 

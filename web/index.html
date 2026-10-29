@@ -78,6 +78,16 @@
     .sheet-group h3 { margin: 0 0 6px; font-size: 14px; font-weight: 900; }
     .sheet-group .row { flex-wrap: wrap; overflow: visible; }
     details.tools { font-size: 13px; color: var(--mute); }
+    .search .btn.small { border-radius: 999px; min-width: 40px; }
+    .lens { display: flex; border: 2px solid var(--line); border-radius: 999px; padding: 3px; background: var(--sheet); align-self: flex-start; }
+    .lens button { border: 0; background: none; border-radius: 999px; padding: 5px 14px; font-weight: 700; cursor: pointer; font-size: 14px; }
+    .lens button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+    .row.sub.types button[aria-pressed="true"] { background: var(--go-tint); border-color: var(--go); }
+    .export { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--mute); }
+    .secret { -webkit-text-security: disc; }
+    .brand { display: inline-flex; align-items: center; gap: 5px; }
+    .brand svg, .brand img { width: 16px; height: 16px; flex: none; border-radius: 3px; }
+    .place .loc { font-size: 12px; color: var(--mute); }
     details.tools code { overflow-wrap: anywhere; font-size: 12px; }
   </style>
 </head>
@@ -101,20 +111,37 @@
     </form>
 
     <a class="reread" id="reread" hidden></a>
+    <div id="failed"></div>
 
-    <div class="search"><input id="q" type="search" placeholder="搜尋標題、重點、地點、為什麼收" aria-label="搜尋"></div>
+    <div class="search">
+      <input id="q" name="rb-search-q" type="search" autocomplete="off" autocapitalize="off" spellcheck="false"
+             data-1p-ignore data-lpignore="true" placeholder="搜尋標題、重點、地點、為什麼收" aria-label="搜尋">
+      <button class="btn small" id="q-clear" type="button" aria-label="清除搜尋" hidden>✕</button>
+    </div>
+    <div class="lens" role="group" aria-label="怎麼看">
+      <button type="button" id="l-cat" aria-pressed="true">依分類看</button>
+      <button type="button" id="l-place" aria-pressed="false">依地點看</button>
+    </div>
+    <div class="row" id="countries" aria-label="國家" hidden></div>
+    <div class="row sub" id="cities" aria-label="城市" hidden></div>
     <div class="row" id="cats" aria-label="主分類"></div>
     <div class="row sub" id="subs" aria-label="次分類" hidden></div>
     <div class="row sub" id="areas" aria-label="地區" hidden></div>
+    <div class="row sub" id="locs" aria-label="地區" hidden></div>
+    <div class="row sub types" id="types" aria-label="地點類型" hidden></div>
     <div class="fl">
       <button class="btn small" id="filter-btn" type="button">篩選</button>
       <span id="active"></span>
       <span class="views">
         <button class="btn small" id="v-cards" type="button" aria-pressed="true">文章</button>
-        <button class="btn small" id="v-places" type="button" aria-pressed="false">地點</button>
+        <button class="btn small" id="v-places" type="button" aria-pressed="false">店家清單</button>
       </span>
     </div>
 
+    <div class="export" id="export" hidden>
+      <span id="export-n"></span>
+      <button class="btn small" id="export-btn" type="button">匯出到 Google 我的地圖</button>
+    </div>
     <div class="cards" id="list"></div>
     <p class="stats" id="stats"></p>
   </main>
@@ -135,9 +162,11 @@
     <h2>連結收藏庫</h2>
     <p class="muted" style="margin:0;font-size:14px">token 只存在這台裝置的瀏覽器裡，不會傳到 GitHub 以外的地方。</p>
     <label for="s-repo">收藏庫</label>
-    <input class="field" id="s-repo" autocomplete="off" spellcheck="false">
+    <input class="field" id="s-repo" name="rb-repo" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true">
     <label for="s-token">GitHub token（只勾 read-box-library，Contents：Read and write）</label>
-    <input class="field" id="s-token" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_…">
+    <!-- Not type=password: browsers would offer to save it and then autofill other fields with the repo name. -->
+    <input class="field secret" id="s-token" name="rb-gh-token" type="text" autocomplete="off" autocapitalize="off"
+           spellcheck="false" data-1p-ignore data-lpignore="true" placeholder="github_pat_…">
     <p class="err" id="s-err" style="font-size:13px;margin:8px 0 0"></p>
     <details class="tools">
       <summary>iPhone 捷徑與電腦書籤</summary>
@@ -148,6 +177,23 @@
       <button class="btn small" id="s-logout" type="button">登出這台裝置</button>
       <button class="btn small" id="s-cancel" type="button">取消</button>
       <button class="btn small go" id="s-save" type="button">儲存</button>
+    </div>
+  </dialog>
+
+  <dialog id="mymaps">
+    <h2>匯出到 Google 我的地圖</h2>
+    <p class="muted" style="margin:0;font-size:14px" id="mm-n"></p>
+    <ol style="padding-left:20px;font-size:14px;margin:10px 0">
+      <li>按下面的「下載清單檔」，存下 CSV 檔。</li>
+      <li>用電腦打開 <a href="https://www.google.com/mymaps" target="_blank" rel="noopener noreferrer">Google 我的地圖</a> → 建立新地圖。</li>
+      <li>在圖層按「匯入」→ 選剛剛的檔案。</li>
+      <li>「位置」選 <b>地址</b>，「標題」選 <b>名稱</b>。</li>
+      <li>匯入後點幾個點確認位置：用店名找的，偶爾會找到同名的別家。</li>
+    </ol>
+    <p class="muted" style="font-size:12px;margin:0">一個檔案最多 2,000 個地點（Google 的上限）。</p>
+    <div class="row-btns">
+      <button class="btn small" id="mm-cancel" type="button">取消</button>
+      <a class="btn small go" id="mm-download" download="read-box-地點.csv">下載清單檔</a>
     </div>
   </dialog>
 

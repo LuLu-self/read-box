@@ -52,8 +52,9 @@ export async function getBlobUrl(cfg, path) {
       { headers: headers(cfg, 'application/vnd.github.raw+json') });
     if (!res.ok) return null;
     const blob = await res.blob();
-    return /^image\/(jpeg|png|webp)$/.test(blob.type) || blob.type === 'application/octet-stream'
-      ? URL.createObjectURL(new Blob([blob], { type: 'image/jpeg' })) : null;
+    const type = path.endsWith('.png') ? 'image/png' : 'image/jpeg';
+    return /^image\/(jpeg|png|webp)$/.test(blob.type) || blob.type === 'application/octet-stream' || blob.type === ''
+      ? URL.createObjectURL(new Blob([blob], { type })) : null;
   } catch { return null; }
 }
 
@@ -105,4 +106,23 @@ export async function updateJson(cfg, path, change, message, empty) {
     if (res.status !== 409 && res.status !== 422) return { ok: false, status: res.status, message: res.message };
   }
   return { ok: false, status: 409 };
+}
+
+// Files in a folder (name, path, sha); [] when the folder does not exist.
+export async function listDir(cfg, path) {
+  try {
+    const res = await fetch(`${API}/${cfg.repo}/contents/${encPath(path)}`, { headers: headers(cfg), cache: 'no-cache' });
+    if (!res.ok) return [];
+    const body = await res.json();
+    return Array.isArray(body) ? body.filter((f) => f.type === 'file').map((f) => ({ name: f.name, path: f.path, sha: f.sha })) : [];
+  } catch { return []; }
+}
+
+export async function deleteFile(cfg, path, sha, message) {
+  try {
+    const res = await fetch(`${API}/${cfg.repo}/contents/${encPath(path)}`, {
+      method: 'DELETE', headers: headers(cfg), body: JSON.stringify({ message, sha }),
+    });
+    return res.ok;
+  } catch { return false; }
 }

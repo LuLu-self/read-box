@@ -193,12 +193,19 @@ class PublishTest(unittest.TestCase):
             (repo / "inbox" / "20261029-100200-cccc.json").write_text(json.dumps(
                 {"v": 1, "url": fail["url"], "captured_at": "2026-10-29T10:02:00+08:00"}), encoding="utf-8")
             a3 = self._art(root, "20261029-100200-cccc", fail, "", None)
-            self.assertEqual(publish.publish_one(repo, a3, {"id": "20261029-100200-cccc"}, tax), "card")
+            self.assertEqual(publish.publish_one(repo, a3, {"id": "20261029-100200-cccc"}, tax), "skipped")
+            failed = json.loads((repo / "inbox" / "failed" / "20261029-100200-cccc.json").read_text(encoding="utf-8"))
+            self.assertIn("沒有收進來", failed["error"])
+            # Unreadable but with a title (e.g. from the link) is still kept as a card.
+            (repo / "inbox" / "20261029-100200-cccc.json").write_text(json.dumps(
+                {"v": 1, "url": fail["url"], "captured_at": "2026-10-29T10:02:00+08:00"}), encoding="utf-8")
+            a3b = self._art(root, "20261029-100200-cccc-b", dict(fail, title="從網址看得出的標題"), "", None)
+            self.assertEqual(publish.publish_one(repo, a3b, {"id": "20261029-100200-cccc"}, tax), "card")
             idx = publish.rebuild_index(repo)
             self.assertEqual(idx["count"], 2)
             card = next(r for r in idx["items"] if r["id"] == "20261029-100200-cccc")
             self.assertEqual(card["one_line"], "無法讀取內容，請點原文連結查看")
-            self.assertEqual(card["title"], "Instagram · 測試 的貼文")
+            self.assertEqual(card["title"], "從網址看得出的標題")
             self.assertFalse(card["ai_ok"])
             row = next(r for r in idx["items"] if r["id"] == "20261029-100000-aaaa")
             self.assertEqual(row["locations"], [["日本", "大阪"], ["日本", "京都"]])
