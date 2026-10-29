@@ -165,7 +165,7 @@ jobs:
           echo "exit=$rc" >> "$GITHUB_OUTPUT"
           # Diagnostics for publish (the run log is not always reachable): exit code and the
           # tail of stderr with the token masked.
-          TOKEN="$TOKEN" RC="$rc" python3 -c 'import json, os, pathlib; e = pathlib.Path(os.environ["RUNNER_TEMP"], "claude.err"); t = e.read_text(errors="replace")[-400:] if e.exists() else ""; t = t.replace(os.environ["TOKEN"], "***") if os.environ["TOKEN"] else t; pathlib.Path(os.environ["STAGE"], "claude.json").write_text(json.dumps({"token_set": True, "exit": int(os.environ["RC"]), "stderr_tail": t}, ensure_ascii=False))'
+          TOKEN="$TOKEN" RC="$rc" python3 -c 'import json, os, pathlib; e = pathlib.Path(os.environ["RUNNER_TEMP"], "claude.err"); t = e.read_text(errors="replace")[-400:] if e.exists() else ""; t = t.replace(os.environ["TOKEN"], "***") if os.environ["TOKEN"] else t; tok = os.environ["TOKEN"]; shape = {"len": len(tok), "prefix_ok": tok.startswith("sk-ant-oat"), "whitespace": any(ch.isspace() for ch in tok)}; pathlib.Path(os.environ["STAGE"], "claude.json").write_text(json.dumps({"token_set": True, "exit": int(os.environ["RC"]), "stderr_tail": t, "token_shape": shape}, ensure_ascii=False))'
 
           python3 "$S/claude_stream.py" "$RUNNER_TEMP"/stream-*.jsonl "$STAGE/run.json"
           SID=$(jq -r '.result.session_id // empty' "$STAGE/run.json")

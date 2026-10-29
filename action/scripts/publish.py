@@ -255,6 +255,9 @@ def ai_run_info(art: Path) -> dict:
     run = (load_json(art / "run.json", {}) or {}).get("result") or {}
     info = {"ran": bool(cl.get("token_set")), "token_set": cl.get("token_set"), "exit": cl.get("exit"),
             "stderr_tail": clip(cl.get("stderr_tail") if isinstance(cl.get("stderr_tail"), str) else "", 400)}
+    shape = cl.get("token_shape")
+    if isinstance(shape, dict):
+        info["token_shape"] = {k: shape.get(k) for k in ("len", "prefix_ok", "whitespace")}
     if run:
         info.update(is_error=run.get("is_error"), subtype=clip(str(run.get("subtype") or ""), 40),
                     num_turns=run.get("num_turns"), result_text=clip(str(run.get("result_text") or ""), 300))
