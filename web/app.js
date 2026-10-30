@@ -4,17 +4,19 @@ import { loadCfg, saveCfg, clearCfg, DEFAULT_REPO, getJson, repoStatus, putFile,
 import { parseLinks, safeUrl, makeId, isoLocal, shortDate, duration, facets, applyFilter, placesOf, rereadDue,
   thisWeek, markOf, withOverrides, myMapsCsv, MYMAPS_MAX_ROWS, MARKS, PLATFORM_LABEL, KIND_LABEL } from './lib/data.mjs';
 import { el, brandMark } from './lib/ui.mjs';
+import { deleteItems } from './lib/remove.mjs';
 
 const $ = (id) => document.getElementById(id);
 const PENDING_KEY = 'readbox.pending';
 const VIEW_KEY = 'readbox.view';
 const LENS_KEY = 'readbox.lens';
+const COLS_KEY = 'readbox.cols';
 const PIN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>';
 
 const EMPTY_F = { lens: 'cat', category: '', sub: '', area: '', country: '', city: '', types: [], q: '',
   platforms: [], marks: [], placeTypes: [], unreadable: false };
 const S = { raw: [], items: [], state: { items: {} }, categories: [], failed: [], f: { ...EMPTY_F },
-  view: 'cards', loaded: false, error: '', sharedBody: '' };
+  view: 'cards', loaded: false, error: '', sharedBody: '', picked: null, cols: 1 };
 
 function store(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch { /* storage blocked */ } }
 function recall(key, dflt) { try { return JSON.parse(localStorage.getItem(key)) ?? dflt; } catch { return dflt; } }
@@ -207,8 +209,61 @@ function card(i, cfg) {
     ...where.map((w) => el('span', { text: `📍${w}` })),
     ...(i.tags?.place_types || []).slice(0, 3).map((t) => el('span', { text: t })),
     i.kind && !['social', 'article'].includes(i.kind) ? el('span', { text: KIND_LABEL[i.kind] || i.kind }) : null);
-  return el('a', { class: 'card', href: `read.html#${encodeURIComponent(i.id)}`, 'data-m': mark === '未讀' ? null : mark },
-    src, el('div', { class: 'tl', text: i.title }), i.one_line ? el('div', { class: 'ol', text: i.one_line }) : null, tags);
+  const body = [src, el('div', { class: 'tl', text: i.title }), i.one_line ? el('div', { class: 'ol', text: i.one_line }) : null, tags];
+  const m = mark === '未讀' ? null : mark;
+  if (!S.picked) return el('a', { class: 'card', href: `read.html#${encodeURIComponent(i.id)}`, 'data-m': m }, ...body);
+  // 選取模式: the whole card toggles its checkbox instead of opening the item.
+  const on = S.picked.has(i.id);
+  const box = el('input', { type: 'checkbox', class: 'tick', 'aria-label': `選取：${i.title}` });
+  box.checked = on;
+  box.addEventListener('change', () => { if (box.checked) S.picked.add(i.id); else S.picked.delete(i.id); render(); });
+  return el('label', { class: `card${on ? ' picked' : ''}`, 'data-m': m }, box, ...body);
+}
+
+// ------------------------------------------------------------------ batch delete
+
+function setPicking(on) {
+  S.picked = on ? new Set() : null;
+  if (on && S.view !== 'cards') setView('cards'); else render();
+}
+
+function renderPickBar(shown) {
+  const on = !!S.picked;
+  $('pick-btn').textContent = on ? '完成' : '選取';
+  $('pick-btn').setAttribute('aria-pressed', String(on));
+  $('pick-bar').hidden = !on;
+  if (!on) return;
+  // Keep only what is still on screen, so 刪除 never touches cards hidden by a filter.
+  const ids = new Set(shown.map((i) => i.id));
+  for (const id of S.picked) if (!ids.has(id)) S.picked.delete(id);
+  const n = S.picked.size;
+  $('pick-n').textContent = n ? `已選 ${n} 篇` : '點卡片來選取';
+  $('pick-all').textContent = n && n === shown.length ? '全不選' : '全選';
+  $('pick-del').disabled = !n;
+}
+
+function openBatchDelete() {
+  const n = S.picked?.size || 0;
+  if (!n) return;
+  $('bd-text').textContent = `選取的 ${n} 篇會從看板移除，收藏庫裡的內容和圖片也會一起刪掉，刪了就找不回來。`;
+  $('bd-msg').textContent = '';
+  $('bd-go').disabled = false;
+  $('batch-del').showModal();
+}
+
+async function batchDelete() {
+  const cfg = loadCfg();
+  const ids = [...(S.picked || [])];
+  if (!cfg || !ids.length) return;
+  $('bd-go').disabled = true;
+  $('bd-msg').textContent = `刪除中…（${ids.length} 篇）`;
+  const r = await deleteItems(cfg, ids);
+  if (!r.state) { $('bd-msg').textContent = '沒刪成功，請再試一次'; $('bd-go').disabled = false; return; }
+  S.state = r.state;
+  S.items = withOverrides(S.raw, S.state);
+  $('batch-del').close();
+  setPicking(false);
+  $('stats').textContent = r.ok ? `刪掉 ${ids.length} 篇了。` : `已從看板移除 ${ids.length} 篇；有幾篇的檔案還沒排進刪除，之後再刪一次就好。`;
 }
 
 function emptyText() {
@@ -268,6 +323,7 @@ function render() {
 
   if (S.view === 'places') {
     list.className = 'places';
+    delete list.dataset.cols;
     list.replaceChildren(...(places.length ? places.map((p) => el('div', { class: 'place' },
       el('span', { class: 'pill dark', text: p.type }),
       el('div', { class: 'nm' }, el('b', { text: p.name }),
@@ -276,8 +332,9 @@ function render() {
       safeUrl(p.map_url) ? mapLink(p.map_url) : null))
       : [el('p', { class: 'empty', text: S.items.length ? '這些收藏裡沒有提到店家或景點。' : emptyText() })]));
   } else {
-    const waiting = !S.f.category && !S.f.q && !S.f.country ? pending() : [];
+    const waiting = !S.picked && !S.f.category && !S.f.q && !S.f.country ? pending() : [];
     list.className = 'cards';
+    if (S.cols > 1) list.dataset.cols = String(S.cols); else delete list.dataset.cols;
     list.replaceChildren(
       ...waiting.map((p) => el('div', { class: 'card pending' },
         el('div', { class: 'src' }, el('span', { text: '整理中…' }), el('span', { text: shortDate(p.at) })),
@@ -286,12 +343,16 @@ function render() {
         : [el('p', { class: 'empty', text: S.items.length ? '沒有符合的收藏，換個條件試試。' : (S.loaded || S.error ? emptyText() : '載入中…') })]));
   }
   $('stats').textContent = S.items.length ? `顯示 ${shown.length} / ${S.items.length} 篇` : '';
+  renderPickBar(S.view === 'cards' ? shown : []);
+  $('cols').hidden = S.view !== 'cards';
+  for (const b of $('cols').querySelectorAll('button')) b.setAttribute('aria-pressed', String(Number(b.dataset.cols) === S.cols));
 }
 
 function setF(patch) { Object.assign(S.f, patch); if ('lens' in patch) store(LENS_KEY, patch.lens); render(); }
 
 function setView(view) {
   S.view = view;
+  if (view !== 'cards') S.picked = null;
   store(VIEW_KEY, view);
   $('v-cards').setAttribute('aria-pressed', String(view === 'cards'));
   $('v-places').setAttribute('aria-pressed', String(view === 'places'));
@@ -375,11 +436,25 @@ $('v-cards').addEventListener('click', () => setView('cards'));
 $('v-places').addEventListener('click', () => setView('places'));
 $('export-btn').addEventListener('click', openExport);
 $('mm-cancel').addEventListener('click', () => $('mymaps').close());
+for (const b of $('cols').querySelectorAll('button')) {
+  b.addEventListener('click', () => { S.cols = Number(b.dataset.cols); store(COLS_KEY, S.cols); render(); });
+}
+$('pick-btn').addEventListener('click', () => setPicking(!S.picked));
+$('pick-cancel').addEventListener('click', () => setPicking(false));
+$('pick-all').addEventListener('click', () => {
+  const shown = applyFilter(S.items, S.f, S.state);
+  S.picked = new Set(S.picked.size === shown.length ? [] : shown.map((i) => i.id));
+  render();
+});
+$('pick-del').addEventListener('click', openBatchDelete);
+$('bd-cancel').addEventListener('click', () => $('batch-del').close());
+$('bd-go').addEventListener('click', batchDelete);
 
 // Browsers may autofill the search box from saved form data; never start with a hidden filter.
 $('q').value = '';
 S.view = recall(VIEW_KEY, 'cards') === 'places' ? 'places' : 'cards';
 S.f.lens = recall(LENS_KEY, 'cat') === 'place' ? 'place' : 'cat';
+S.cols = [1, 2, 3].includes(recall(COLS_KEY, 1)) ? recall(COLS_KEY, 1) : 1;
 setView(S.view);
 load().then(fromQuery);
 if (pending().length) schedulePoll();

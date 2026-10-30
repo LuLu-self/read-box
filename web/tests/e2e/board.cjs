@@ -197,6 +197,41 @@ async function mockGitHub(page) {
       check(JSON.parse(state).items['syn-osaka-2'].deleted === true, 'delete flagged in state');
       check(puts.some((p) => p.rel.startsWith('inbox/') && JSON.parse(p.text).delete_of === 'syn-osaka-2'), 'delete capture queued');
       check(!(await page.textContent('#list')).includes('測試：大阪美食影片'), 'deleted card gone from the board');
+
+      // 一排 1／2／3 張: grid columns follow the choice and stay after reload.
+      for (const n of [2, 3]) {
+        await page.click(`#cols button[data-cols="${n}"]`);
+        const cols = await page.evaluate(() => getComputedStyle(document.getElementById('list')).gridTemplateColumns.split(' ').length);
+        check(cols === n, `一排 ${n} 張: ${cols} columns`);
+        check(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `一排 ${n} 張: no horizontal scroll`);
+        await page.screenshot({ path: `${OUT}/cols${n}-${scheme}.png` });
+      }
+      await page.reload();
+      await page.waitForSelector('#list .card');
+      check(await page.getAttribute('#list', 'data-cols') === '3', '一排 3 張 remembered');
+      await page.click('#cols button[data-cols="1"]');
+      check(!(await page.getAttribute('#list', 'data-cols')), '一排 1 張: back to a single column');
+
+      // Batch delete from the list: 選取 → tick two cards → 刪除 → confirm.
+      const before = await page.locator('#list .card:not(.pending)').count();
+      await page.click('#pick-btn');
+      check(await page.locator('#list a.card').count() === 0, 'select mode: cards do not open the item');
+      const picks = page.locator('#list label.card');
+      const t1 = await picks.nth(0).locator('.tl').textContent();
+      const t2 = await picks.nth(1).locator('.tl').textContent();
+      await picks.nth(0).click();
+      await picks.nth(1).click();
+      check((await page.textContent('#pick-n')) === '已選 2 篇', 'two cards picked');
+      check(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'select bar: no horizontal scroll');
+      await page.screenshot({ path: `${OUT}/pick-${scheme}.png` });
+      await page.click('#pick-del');
+      await page.click('#bd-go');
+      await page.waitForFunction(() => document.getElementById('pick-bar').hidden);
+      const delIds = Object.entries(JSON.parse(state).items).filter(([, v]) => v.deleted).map(([k]) => k);
+      check(delIds.length === 3, `batch: ${delIds.length} deleted in state`);
+      check(puts.filter((p) => p.rel.startsWith('inbox/') && JSON.parse(p.text).delete_of).length === 3, 'batch: delete captures queued');
+      const after = await page.textContent('#list');
+      check(!after.includes(t1) && !after.includes(t2) && (await page.locator('#list .card:not(.pending)').count()) === before - 2, 'batch: picked cards gone');
     }
 
     const yt = index.items.find((i) => i.platform === 'youtube' && !i.id.startsWith('syn-')) || index.items[0];
