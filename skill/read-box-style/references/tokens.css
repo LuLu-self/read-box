@@ -1,0 +1,136 @@
+/* Read Box 介面風格：色票與共用元件。淺色在 :root；深色寫兩次（跟著手機、手動選深色）。
+   用法：整段貼進 <style>，再用下面的 class 組畫面。 */
+:root {
+  --paper: #ecf3f7; --grid: #e1eaf0; --sheet: #ffffff; --note: #fbf9f3; --note-line: #e3e8ec; --ph: #d2dfe9; --tape: #f2b39a;
+  --ink: #1e1e1e; --mute: #5d6b76; --line: #1e1e1e; --rule: #d2dfe9;
+  --hi: #e75829; --hi-text: #bf4519; --hi-fill: #c9481c; --hi-fill-ink: #ffffff; --hi-tint: #fbe9e1;
+  --go: #557a1f; --go-ink: #ffffff; --go-tint: #eef4e3;
+  --m-read: #9aa7b1; --m-arch: #b8c3cb; --err: #b3261e;
+  --sans: "Noto Sans TC", system-ui, -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif;
+  --gutter: max(16px, env(safe-area-inset-left, 0px));
+  color-scheme: light;
+}
+/* 外觀: data-theme on <html> is LuLu's choice (淺色／深色); without it the phone's setting decides. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #141414; --grid: #1b1b1b; --sheet: #1f1f1f; --note: #24221d; --note-line: #34322c; --ph: #2b3238; --tape: #7a3f2a;
+    --ink: #f3f5f7; --mute: #9aa7b1; --line: #d6d6d6; --rule: #30363b;
+    --hi: #ff7a45; --hi-text: #ff7a45; --hi-fill: #ff7a45; --hi-fill-ink: #141414; --hi-tint: #2e1a12;
+    --go: #a8cc78; --go-ink: #141414; --go-tint: #1d2616;
+    --m-read: #6b757d; --m-arch: #4a5258; --err: #ff8a80;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #141414; --grid: #1b1b1b; --sheet: #1f1f1f; --note: #24221d; --note-line: #34322c; --ph: #2b3238; --tape: #7a3f2a;
+  --ink: #f3f5f7; --mute: #9aa7b1; --line: #d6d6d6; --rule: #30363b;
+  --hi: #ff7a45; --hi-text: #ff7a45; --hi-fill: #ff7a45; --hi-fill-ink: #141414; --hi-tint: #2e1a12;
+  --go: #a8cc78; --go-ink: #141414; --go-tint: #1d2616;
+  --m-read: #6b757d; --m-arch: #4a5258; --err: #ff8a80;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background-color: var(--paper); color: var(--ink); font: 15px/1.6 var(--sans);
+  background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+button, input, textarea, select { font: inherit; color: inherit; }
+a { color: inherit; }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+:focus-visible { outline: 2px solid var(--hi); outline-offset: 2px; }
+
+.page {
+  max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px;
+  padding: max(14px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px))
+           max(32px, env(safe-area-inset-bottom, 0px)) var(--gutter);
+}
+.top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mark { display: flex; align-items: center; gap: 8px; font-weight: 900; font-size: 20px; letter-spacing: -0.01em; text-decoration: none; }
+.mark i { width: 26px; height: 26px; border-radius: 7px; background: var(--hi-fill); color: var(--hi-fill-ink);
+  display: grid; place-items: center; font-style: normal; font-size: 14px; font-weight: 900; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border: 1.5px solid var(--line); border-radius: 999px;
+  font-size: 13px; background: var(--sheet); white-space: nowrap; cursor: pointer; }
+.chip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--m-read); }
+.chip[data-ok="1"] .dot { background: var(--go); }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 0 16px;
+  border-radius: 12px; border: 2px solid var(--line); background: var(--sheet); font-weight: 700; cursor: pointer;
+  white-space: nowrap; text-decoration: none; }
+.btn.go { background: var(--go); color: var(--go-ink); border-color: var(--go); }
+.btn.small { min-height: 34px; padding: 0 12px; font-size: 13px; border-width: 1.5px; }
+.btn:disabled { opacity: .5; cursor: default; }
+@media (prefers-reduced-motion: no-preference) { .btn:active { transform: translateY(1px); } }
+
+.pill { display: inline-block; padding: 1px 9px; border-radius: 6px; font-size: 12px; font-weight: 700;
+  background: var(--hi-fill); color: var(--hi-fill-ink); white-space: nowrap; }
+.pill.dark { background: var(--ink); color: var(--paper); }
+.pill.soft { background: var(--sheet); color: var(--mute); border: 1px solid var(--rule); font-weight: 500; }
+.label { font-size: 17px; font-weight: 900; align-self: flex-start; padding-bottom: 3px; border-bottom: 2px solid var(--ink); margin: 0; }
+.muted { color: var(--mute); }
+.err { color: var(--err); }
+
+.map { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border: 1.5px solid var(--go); color: var(--ink);
+  border-radius: 999px; font-size: 12px; font-weight: 700; text-decoration: none; background: var(--go-tint); white-space: nowrap; }
+.map svg { width: 12px; height: 12px; fill: var(--go); }
+
+dialog { border: 2px solid var(--line); border-radius: 16px; background: var(--sheet); color: var(--ink); padding: 18px;
+  width: min(520px, calc(100vw - 32px)); }
+dialog::backdrop { background: rgba(0, 0, 0, .35); }
+dialog h2 { margin: 0 0 8px; font-size: 18px; font-weight: 900; }
+dialog label { display: block; margin: 12px 0 4px; font-size: 14px; font-weight: 700; }
+.field { width: 100%; min-height: 44px; padding: 8px 12px; border: 2px solid var(--line); border-radius: 12px; background: var(--sheet); }
+textarea.field { min-height: 88px; resize: vertical; }
+.row-btns { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin-top: 14px; }
+
+/* ---- 膠囊列（分類） ---- */
+.row { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.row::-webkit-scrollbar { display: none; }
+.row button { flex: none; display: inline-flex; gap: 5px; align-items: baseline; border: 1.5px solid var(--line); border-radius: 999px;
+  background: var(--sheet); padding: 4px 12px; font-size: 14px; cursor: pointer; white-space: nowrap; }
+.row button small { font-size: 11px; color: var(--mute); font-variant-numeric: tabular-nums; }
+.row button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); font-weight: 700; }
+.row button[aria-pressed="true"] small { color: inherit; }
+.row.sub button { font-size: 13px; border-color: var(--rule); }
+.row.sub button[aria-pressed="true"] { background: var(--sheet); color: var(--ink); border-color: var(--line); border-width: 2px; padding: 3.5px 11.5px; }
+
+/* ---- 大標題 ---- */
+.hello { font-size: 24px; font-weight: 900; line-height: 1.3; margin: 0; text-wrap: balance; }
+.hello em { font-style: normal; color: var(--hi); }
+
+/* ---- 卡片 ---- */
+.cards { display: flex; flex-direction: column; gap: 10px; }
+.card { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border: 1.5px solid var(--line); border-radius: 14px;
+  background: var(--sheet); min-width: 0; text-decoration: none; color: inherit; }
+.card .src { font-size: 12px; color: var(--mute); display: flex; justify-content: space-between; gap: 8px; }
+.card .src b { color: var(--ink); font-weight: 700; }
+.card .tl { font-size: 16px; font-weight: 900; line-height: 1.4; overflow-wrap: anywhere; }
+.card .ol { font-size: 14px; color: var(--mute); overflow-wrap: anywhere; }
+.card .tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.card .tags span:not(.pill) { font-size: 12px; border: 1px solid var(--rule); border-radius: 6px; padding: 0 7px; color: var(--mute); }
+.card[data-m] { border-left-width: 6px; padding-left: 10px; }
+.card[data-m="讀過"] { border-left-color: var(--m-read); }
+.card[data-m="有用"] { border-left-color: var(--ink); }
+.card[data-m="實踐過"] { border-left-color: var(--go); background: var(--go-tint); }
+.card[data-m="封存"] { border-left-color: var(--m-arch); opacity: .7; }
+
+/* ---- 提醒框（要你注意） ---- */
+.alert { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border: 2px solid var(--hi); border-radius: 14px; background: var(--sheet); text-decoration: none; color: inherit; }
+.alert b { display: block; font-weight: 900; }
+
+/* ---- 單篇區塊 ---- */
+.blk { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 14px; background: var(--sheet); min-width: 0; }
+.blk ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.blk li { display: flex; gap: 8px; }
+.blk li::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--ink); margin-top: 9px; flex: none; }
+.notice { margin: 0; padding: 8px 12px; border-radius: 10px; background: var(--hi-tint); font-size: 13px; }
+
+/* ---- 筆記紙＋紙膠帶（原文、摘錄） ---- */
+.clip { position: relative; margin-top: 10px; padding: 18px 14px 14px; border-radius: 4px; background: var(--note);
+  background-image: repeating-linear-gradient(var(--note) 0 25px, var(--note-line) 25px 26px); box-shadow: 0 1px 0 var(--rule); }
+.clip::before { content: ""; position: absolute; top: -10px; left: 24px; width: 86px; height: 22px; background: var(--tape); opacity: .85; transform: rotate(-4deg); }
+.clip h2 { margin: 0 0 4px; font-size: 14px; font-weight: 900; }
+.clip blockquote { margin: 0 0 6px; line-height: 26px; }

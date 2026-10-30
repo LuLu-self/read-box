@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Read Box 風格範例</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap">
+<link rel="stylesheet" href="../references/tokens.css">
+</head>
+<body>
+<main class="page">
+  <div class="top"><span class="mark"><i>R</i>Read Box</span><button class="chip"><span class="dot" style="background:var(--go)"></span>已連線</button></div>
+  <p class="hello">這週收了 <em>12</em> 篇，<br>有 3 篇該重讀了</p>
+  <div style="display:flex;gap:8px"><input class="field" placeholder="貼上連結，可以一次貼很多個"><button class="btn go">收進來</button></div>
+  <a class="alert" href="#"><span class="pill">該重讀了</span><div><b>焦慮時可以做的 5 個呼吸練習</b><span class="muted" style="font-size:13px">收藏 3 週前 · 心理</span></div></a>
+  <div class="row"><button aria-pressed="false">全部 <small>24</small></button><button aria-pressed="true">旅遊 <small>12</small></button><button aria-pressed="false">美食 <small>5</small></button><button aria-pressed="false">理財 <small>4</small></button></div>
+  <div class="row sub"><button aria-pressed="true">日本</button><button aria-pressed="false">台灣</button><button aria-pressed="false">韓國</button></div>
+  <h2 class="label">本週新增</h2>
+  <div class="cards">
+    <a class="card" href="#"><div class="src"><span><b>Threads</b> · @範例帳號</span><span>2026/10/30 收</span></div>
+      <div class="tl">大阪在地人才去的 5 家章魚燒</div><div class="ol">第 3 家只開到下午三點，早點去</div>
+      <div class="tags"><span class="pill">未讀</span><span>旅遊 › 日本</span><span>📍日本 › 大阪</span><span>小吃</span></div></a>
+    <a class="card" data-m="實踐過" href="#"><div class="src"><span><b>YouTube</b> · 範例頻道 · 18:42</span><span>2026/10/22 收</span></div>
+      <div class="tl">黑門市場吃一圈：預算 3,000 日圓怎麼排</div><div class="ol">早上 9 點前到，海鮮串燒先吃</div>
+      <div class="tags"><span class="pill dark">實踐過</span><span>美食 › 小吃</span></div></a>
+  </div>
+  <section class="blk"><h2 class="label">重點</h2><ul><li>早上 9 點前到，人比較少</li><li>海鮮串燒一串約 800 日圓</li></ul>
+    <div style="display:flex;align-items:center;gap:8px"><span class="pill dark">小吃</span><b style="flex:1">黑門市場</b>
+      <a class="map" href="#"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>地圖</a></div></section>
+  <p class="notice">摘要依據：影片的說明文字，未看影片內容</p>
+  <div class="clip"><h2>原文</h2><blockquote>「黑門市場一日吃法，預算三千日圓。」</blockquote></div>
+  <p class="muted" style="font-size:12px;text-align:center">範例內容</p>
+</main>
+</body>
+</html>
