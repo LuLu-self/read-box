@@ -14,7 +14,7 @@ const PIN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 
 const EMPTY_F = { lens: 'cat', category: '', sub: '', area: '', country: '', city: '', types: [], q: '',
   platforms: [], marks: [], placeTypes: [], unreadable: false };
 const S = { raw: [], items: [], state: { items: {} }, categories: [], failed: [], f: { ...EMPTY_F },
-  view: 'cards', loaded: false, error: '' };
+  view: 'cards', loaded: false, error: '', sharedBody: '' };
 
 function store(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch { /* storage blocked */ } }
 function recall(key, dflt) { try { return JSON.parse(localStorage.getItem(key)) ?? dflt; } catch { return dflt; } }
@@ -62,7 +62,10 @@ function prunePending() {
 async function capture(links, note, why) {
   const cfg = loadCfg();
   if (!cfg) { openSettings('先連結收藏庫，再收藏。'); return false; }
-  const jobs = links.length ? links.map((url) => ({ url, text: '' })) : [{ url: '', text: note }];
+  // body: article text the iPhone shortcut read from Safari (what LuLu could see, paywall or not).
+  const body = links.length === 1 ? S.sharedBody : '';
+  S.sharedBody = '';
+  const jobs = links.length ? links.map((url) => ({ url, text: body })) : [{ url: '', text: note }];
   $('cap-btn').disabled = true;
   $('cap-hint').textContent = `送出中…（${jobs.length} 個）`;
   let ok = 0;
@@ -109,12 +112,14 @@ function onSubmit(e) {
   capture(links, links.length ? '' : text, why).then((allOk) => { if (allOk) { $('links').value = ''; $('why').value = ''; } });
 }
 
-// Shared from the iPhone shortcut or the desktop bookmark: ?u=<link>&why=<text> or ?text=<shared text>.
+// Shared from the iPhone shortcut or the desktop bookmark: ?u=<link>&why=<text>[&body=<article text>]
+// or ?text=<shared text>.
 function fromQuery() {
   const p = new URLSearchParams(location.search);
   const shared = [p.get('u'), p.get('text')].filter(Boolean).join('\n');
   if (!shared) return;
   history.replaceState(null, '', location.pathname);
+  S.sharedBody = (p.get('body') || '').trim().slice(0, 60000);
   $('links').value = shared;
   $('why').value = (p.get('why') || '').slice(0, 200);
   if (loadCfg() && parseLinks(shared).length) $('capture').requestSubmit();

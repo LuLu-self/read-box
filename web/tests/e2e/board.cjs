@@ -154,9 +154,15 @@ async function mockGitHub(page) {
       check(caps.length === 2, `capture wrote ${caps.length} inbox files`);
       const c0 = JSON.parse(caps[0].text);
       check(c0.v === 1 && c0.url === 'https://example.com/a?utm_source=x' && c0.why === '測試', 'capture JSON shape');
+      // iPhone shortcut: ?u=…&why=…&body=… is saved at once, with the Safari article text.
+      await page.goto(base + '/index.html?u=' + encodeURIComponent('https://example.com/paywalled') + '&why=' + encodeURIComponent('捷徑測試') + '&body=' + encodeURIComponent('全文第一段。全文第二段。'));
+      await page.waitForFunction(() => document.querySelectorAll('#sent li').length === 1);
+      const sc = JSON.parse(puts.filter((p) => p.rel.startsWith('inbox/')).at(-1).text);
+      check(sc.url === 'https://example.com/paywalled' && sc.why === '捷徑測試' && sc.text === '全文第一段。全文第二段。', 'shortcut link saved with why and body');
+      check(!(await page.evaluate(() => location.search)), 'query cleared after saving');
       await page.fill('#links', '只是一段筆記');
       await page.click('#cap-btn');
-      await page.waitForFunction(() => document.querySelectorAll('#sent li').length === 3);
+      await page.waitForFunction(() => document.querySelectorAll('#sent li').length === 2);
       const note = JSON.parse(puts.filter((p) => p.rel.startsWith('inbox/')).at(-1).text);
       check(note.url === '' && note.text === '只是一段筆記', 'text without link is saved as a note');
     }
