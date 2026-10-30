@@ -13,6 +13,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap">
+  <script>try { const t = localStorage.getItem('readbox.theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch { /* storage blocked */ }</script>
   <link rel="stylesheet" href="tokens.css">
   <style>
     .hello { font-size: 24px; font-weight: 900; line-height: 1.3; margin: 2px 0 0; text-wrap: balance; }
@@ -20,7 +21,6 @@
 
     .capture { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 2px solid var(--line); border-radius: 14px; background: var(--sheet); }
     .capture textarea { min-height: 52px; max-height: 40vh; resize: vertical; border: 0; padding: 4px 2px; background: transparent; font-size: 16px; outline: none; }
-    .capture .why { min-height: 38px; border: 1.5px solid var(--rule); border-radius: 10px; padding: 0 10px; background: var(--paper); font-size: 15px; }
     .capture .bar { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
     .capture .hint { font-size: 13px; color: var(--mute); min-width: 0; }
     #sent { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: 13px; }
@@ -102,7 +102,6 @@
 
     <form class="capture" id="capture">
       <textarea id="links" aria-label="貼上連結" placeholder="貼上連結，可以一次貼很多個；沒有連結的文字會存成筆記"></textarea>
-      <input class="why" id="why" maxlength="200" aria-label="為什麼收（選填）" placeholder="為什麼收（選填）">
       <div class="bar">
         <span class="hint" id="cap-hint"></span>
         <button class="btn go" id="cap-btn" type="submit">收進來</button>
@@ -115,7 +114,7 @@
 
     <div class="search">
       <input id="q" name="rb-search-q" type="search" autocomplete="off" autocapitalize="off" spellcheck="false"
-             data-1p-ignore data-lpignore="true" placeholder="搜尋標題、重點、地點、為什麼收" aria-label="搜尋">
+             data-1p-ignore data-lpignore="true" placeholder="搜尋標題、重點、地點" aria-label="搜尋">
       <button class="btn small" id="q-clear" type="button" aria-label="清除搜尋" hidden>✕</button>
     </div>
     <div class="lens" role="group" aria-label="怎麼看">
@@ -169,6 +168,12 @@
     <input class="field secret" id="s-token" name="rb-gh-token" type="text" autocomplete="off" autocapitalize="off"
            spellcheck="false" data-1p-ignore data-lpignore="true" placeholder="github_pat_…">
     <p class="err" id="s-err" style="font-size:13px;margin:8px 0 0"></p>
+    <label>外觀</label>
+    <div class="row" id="s-theme" role="radiogroup" aria-label="外觀">
+      <button type="button" data-theme-choice="auto" aria-pressed="true">跟著手機</button>
+      <button type="button" data-theme-choice="light" aria-pressed="false">淺色</button>
+      <button type="button" data-theme-choice="dark" aria-pressed="false">深色</button>
+    </div>
     <details class="tools">
       <summary>iPhone 捷徑與電腦書籤</summary>
       <p>iPhone 捷徑網址（後面接上 URL 編碼後的連結）：<br><code id="s-shortcut"></code></p>

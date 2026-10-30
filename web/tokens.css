@@ -11,8 +11,9 @@
   --gutter: max(16px, env(safe-area-inset-left, 0px));
   color-scheme: light;
 }
+/* 外觀: data-theme on <html> is LuLu's choice (淺色／深色); without it the phone's setting decides. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --paper: #141414; --grid: #1b1b1b; --sheet: #1f1f1f; --note: #24221d; --note-line: #34322c; --ph: #2b3238; --tape: #7a3f2a;
     --ink: #f3f5f7; --mute: #9aa7b1; --line: #d6d6d6; --rule: #30363b;
     --hi: #ff7a45; --hi-text: #ff7a45; --hi-fill: #ff7a45; --hi-fill-ink: #141414; --hi-tint: #2e1a12;
@@ -20,6 +21,14 @@
     --m-read: #6b757d; --m-arch: #4a5258; --err: #ff8a80;
     color-scheme: dark;
   }
+}
+:root[data-theme="dark"] {
+  --paper: #141414; --grid: #1b1b1b; --sheet: #1f1f1f; --note: #24221d; --note-line: #34322c; --ph: #2b3238; --tape: #7a3f2a;
+  --ink: #f3f5f7; --mute: #9aa7b1; --line: #d6d6d6; --rule: #30363b;
+  --hi: #ff7a45; --hi-text: #ff7a45; --hi-fill: #ff7a45; --hi-fill-ink: #141414; --hi-tint: #2e1a12;
+  --go: #a8cc78; --go-ink: #141414; --go-tint: #1d2616;
+  --m-read: #6b757d; --m-arch: #4a5258; --err: #ff8a80;
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }

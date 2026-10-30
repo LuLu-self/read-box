@@ -600,10 +600,19 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--url", default="")
     ap.add_argument("--capture", type=Path, help="inbox capture JSON; supplies url and pasted text")
     ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument("--index", type=Path, help="library index.json (category suggestions)")
+    ap.add_argument("--taxonomy", type=Path)
     a = ap.parse_args(argv)
     url, pasted = a.url, ""
     if a.capture:
         cap = json.loads(a.capture.read_text(encoding="utf-8"))
+        if cap.get("suggest_for"):
+            import suggest
+            import taxonomy
+            rec = suggest.prepare(cap["suggest_for"].strip(), a.index or Path("index.json"), taxonomy.load(a.taxonomy), a.out)
+            (a.out / "content.json").write_text(json.dumps(rec, ensure_ascii=False) + "\n", encoding="utf-8")
+            print(json.dumps({"status": rec["status"], "kind": "suggest", "items": rec["count"]}, ensure_ascii=False))
+            return 0
         url, pasted = url or cap.get("url") or "", cap.get("text") or ""
     r = fetch(url, a.out, pasted)
     print(json.dumps({k: r[k] for k in ("platform", "kind", "status", "basis", "reason", "via", "text_chars")},

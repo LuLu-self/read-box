@@ -59,7 +59,7 @@ function prunePending() {
   store(PENDING_KEY, pending().filter((p) => !done.has(p.id) && Date.now() - Date.parse(p.at) < 2 * 3600000));
 }
 
-async function capture(links, note, why) {
+async function capture(links, note) {
   const cfg = loadCfg();
   if (!cfg) { openSettings('先連結收藏庫，再收藏。'); return false; }
   // body: article text the iPhone shortcut read from Safari (what LuLu could see, paywall or not).
@@ -72,7 +72,7 @@ async function capture(links, note, why) {
   for (const job of jobs) {
     const now = new Date();
     const id = makeId(now);
-    const cap = { v: 1, url: job.url, captured_at: isoLocal(now), why, text: job.text, client: 'board@1' };
+    const cap = { v: 1, url: job.url, captured_at: isoLocal(now), why: '', text: job.text, client: 'board@1' };
     const res = await putFile(cfg, `inbox/${id}.json`, JSON.stringify(cap, null, 2) + '\n', `capture: ${job.url || '筆記'}`.slice(0, 120));
     const label = job.url || job.text.slice(0, 40);
     if (res.ok) {
@@ -106,13 +106,12 @@ function schedulePoll() {
 function onSubmit(e) {
   e.preventDefault();
   const text = $('links').value.trim();
-  const why = $('why').value.trim().slice(0, 200);
   if (!text) { $('cap-hint').textContent = '先貼上連結或文字。'; return; }
   const links = parseLinks(text);
-  capture(links, links.length ? '' : text, why).then((allOk) => { if (allOk) { $('links').value = ''; $('why').value = ''; } });
+  capture(links, links.length ? '' : text).then((allOk) => { if (allOk) $('links').value = ''; });
 }
 
-// Shared from the iPhone shortcut or the desktop bookmark: ?u=<link>&why=<text>[&body=<article text>]
+// Shared from the iPhone shortcut or the desktop bookmark: ?u=<link>[&body=<article text>]
 // or ?text=<shared text>.
 function fromQuery() {
   const p = new URLSearchParams(location.search);
@@ -121,7 +120,6 @@ function fromQuery() {
   history.replaceState(null, '', location.pathname);
   S.sharedBody = (p.get('body') || '').trim().slice(0, 60000);
   $('links').value = shared;
-  $('why').value = (p.get('why') || '').slice(0, 200);
   if (loadCfg() && parseLinks(shared).length) $('capture').requestSubmit();
   else $('links').focus();
 }
@@ -342,6 +340,18 @@ async function saveSettings() {
   $('settings').close();
   load();
 }
+
+// ------------------------------------------------------------------ appearance
+
+const THEME_KEY = 'readbox.theme';
+function applyTheme(choice) {
+  if (choice === 'light' || choice === 'dark') document.documentElement.dataset.theme = choice;
+  else delete document.documentElement.dataset.theme;
+  try { if (choice === 'auto') localStorage.removeItem(THEME_KEY); else localStorage.setItem(THEME_KEY, choice); } catch { /* storage blocked */ }
+  for (const b of document.querySelectorAll('[data-theme-choice]')) b.setAttribute('aria-pressed', String(b.dataset.themeChoice === choice));
+}
+for (const b of document.querySelectorAll('[data-theme-choice]')) b.addEventListener('click', () => applyTheme(b.dataset.themeChoice));
+applyTheme(document.documentElement.dataset.theme || 'auto');
 
 // ------------------------------------------------------------------ wiring
 

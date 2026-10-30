@@ -83,6 +83,7 @@ jobs:
           sparse-checkout: |
             inbox
             taxonomy.json
+            index.json
           sparse-checkout-cone-mode: false
           persist-credentials: false
 
@@ -115,7 +116,7 @@ jobs:
           set -uo pipefail
           cap="inbox/$ID.json"
           if [ -f "$cap" ]; then args=(--capture "$cap"); else args=(--url "$URL"); fi
-          python3 "$RB/action/scripts/fetch.py" "${args[@]}" --out "$IN" | tee "$RUNNER_TEMP/fetch.json"
+          python3 "$RB/action/scripts/fetch.py" "${args[@]}" --out "$IN" --index index.json --taxonomy taxonomy.json | tee "$RUNNER_TEMP/fetch.json"
           st=$(jq -r .status "$RUNNER_TEMP/fetch.json" 2>/dev/null || echo failed)
           echo "status=$st" >> "$GITHUB_OUTPUT"
           WHY=""; [ -f "$cap" ] && WHY=$(jq -r '.why // ""' "$cap")

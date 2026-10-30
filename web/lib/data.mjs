@@ -92,7 +92,7 @@ const inLocation = (p, f) => (!f.country || p.country === f.country) && (!f.city
 
 // LuLu's corrections in state.json win over what the AI wrote.
 export function withOverrides(items, state) {
-  return items.map((i) => {
+  return items.filter((i) => !state?.items?.[i.id]?.deleted).map((i) => {
     const o = state?.items?.[i.id]?.override;
     if (!o) return i;
     return { ...i, category: o.category || i.category, subcategory: o.subcategory ?? i.subcategory,

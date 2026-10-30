@@ -13,6 +13,7 @@ import common  # noqa: E402
 import fetch  # noqa: E402
 import items  # noqa: E402
 import places  # noqa: E402
+import suggest  # noqa: E402
 import publish  # noqa: E402
 import taxonomy  # noqa: E402
 import validate  # noqa: E402
@@ -155,6 +156,32 @@ class ItemsTest(unittest.TestCase):
         self.assertIn("redo_of", items.check_capture(dict(ok, redo_of="../x")))
 
 
+class SuggestTest(unittest.TestCase):
+    def test_prepare_check_publish(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            repo = root / "repo"
+            (repo / "library").mkdir(parents=True)
+            (repo / "inbox").mkdir()
+            for i in ("a1", "b2"):
+                (repo / "library" / f"{i}.json").write_text("{}", encoding="utf-8")
+            (repo / "index.json").write_text(json.dumps({"items": [
+                {"id": "a1", "title": "手沖咖啡入門", "one_line": "x", "category": "收件匣", "tags": {"topics": ["咖啡"]}},
+                {"id": "b2", "title": "財報", "one_line": "y", "category": "理財"}]}, ensure_ascii=False), encoding="utf-8")
+            self.assertIsNone(items.check_capture({"v": 1, "captured_at": "2026-10-30T10:00:00+08:00", "suggest_for": "咖啡"}))
+            self.assertIn("suggest_for", items.check_capture({"v": 1, "captured_at": "2026-10-30T10:00:00+08:00", "suggest_for": "a/b"}))
+            art = root / "art"
+            rec = suggest.prepare("咖啡", repo / "index.json", taxonomy.DEFAULT, art)
+            self.assertEqual((rec["kind"], rec["count"]), ("suggest", 2))
+            self.assertEqual(json.loads((art / "request.json").read_text(encoding="utf-8"))["category"], "咖啡")
+            (art / "summary.json").write_text(json.dumps({"items": [{"id": "a1", "reason": "主題是咖啡"}, {"id": "zz", "reason": "不存在"}]},
+                                                         ensure_ascii=False), encoding="utf-8")
+            (repo / "inbox" / "s1.json").write_text(json.dumps({"v": 1, "suggest_for": "咖啡", "captured_at": "2026-10-30T10:00:00+08:00"}), encoding="utf-8")
+            self.assertEqual(publish.publish_one(repo, art, {"id": "s1"}, taxonomy.DEFAULT), "suggested")
+            got = json.loads((repo / "suggestions.json").read_text(encoding="utf-8"))
+            self.assertEqual(got["咖啡"]["items"], [{"id": "a1", "reason": "主題是咖啡"}])
+
+
 class PublishTest(unittest.TestCase):
     def _art(self, root: Path, item_id: str, content: dict, text: str, summary: dict | None):
         art = root / "art" / f"rb-{item_id}"
@@ -218,6 +245,14 @@ class PublishTest(unittest.TestCase):
             e = json.loads((repo / "library" / "20261029-100000-aaaa.json").read_text(encoding="utf-8"))
             self.assertEqual((e["title"], len(e["captures"]), e["why"]), ("重跑後的標題", 2, "去大阪用"))
             self.assertFalse((repo / "library" / "20261029-110000-dddd.json").exists())
+
+            # Delete from the board: the entry, its text and its images go; the index follows.
+            (repo / "inbox" / "20261029-120000-eeee.json").write_text(json.dumps(
+                {"v": 1, "url": "", "text": "", "captured_at": "2026-10-29T12:00:00+08:00", "delete_of": "20261029-100000-aaaa"}), encoding="utf-8")
+            self.assertIsNone(items.check_capture(json.loads((repo / "inbox" / "20261029-120000-eeee.json").read_text(encoding="utf-8"))))
+            self.assertEqual(publish.publish_one(repo, root / "art" / "none", {"id": "20261029-120000-eeee"}, tax), "deleted")
+            self.assertFalse((repo / "library" / "20261029-100000-aaaa.json").exists())
+            self.assertNotIn("20261029-100000-aaaa", [r["id"] for r in publish.rebuild_index(repo)["items"]])
 
 
 if __name__ == "__main__":

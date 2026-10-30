@@ -2,7 +2,8 @@
 
 import { loadCfg, getJson, getText, getBlobUrl, updateJson, putFile } from './lib/gh.mjs';
 import { safeUrl, shortDate, duration, youtubeAt, makeId, isoLocal, MARKS, PLATFORM_LABEL, KIND_LABEL, BASIS_NOTE } from './lib/data.mjs';
-import { el, brandMark } from './lib/ui.mjs';
+import { el } from './lib/ui.mjs';
+import { deleteItems } from './lib/remove.mjs';
 
 const $ = (id) => document.getElementById(id);
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9-]{0,63}$/;
@@ -127,6 +128,24 @@ function redoButton(cfg, e) {
   return btn;
 }
 
+function deleteBlock(cfg, e) {
+  const msg = el('span', { class: 'muted', style: 'font-size:13px' });
+  const dlg = el('dialog', {},
+    el('h2', { text: '刪除這篇？' }),
+    el('p', { style: 'margin:0;font-size:14px', text: `「${e.title}」會從看板移除，收藏庫裡的內容和圖片也會一起刪掉，刪了就找不回來。` }),
+    el('div', { class: 'row-btns' }, msg,
+      el('button', { class: 'btn small', type: 'button', text: '取消', onclick: () => dlg.close() }),
+      el('button', { class: 'btn small', type: 'button', style: 'border-color:var(--err);color:var(--err)', text: '刪除', onclick: async (ev) => {
+        ev.target.disabled = true;
+        msg.textContent = '刪除中…';
+        const r = await deleteItems(cfg, [e.id]);
+        if (r.state) location.href = './';
+        else { msg.textContent = '沒刪成功，請再試一次'; ev.target.disabled = false; }
+      } })));
+  document.body.append(dlg);
+  return el('button', { class: 'btn small', type: 'button', text: '刪除這篇', onclick: () => dlg.showModal() });
+}
+
 // ------------------------------------------------------------------ page
 
 async function main() {
@@ -140,6 +159,7 @@ async function main() {
     return;
   }
   state = st.data || { items: {} };
+  if (state.items?.[id]?.deleted) { $('msg').textContent = '這篇已經刪除了。'; return; }
   const e = { ...entry.data };
   const o = state.items?.[e.id]?.override;
   if (o) Object.assign(e, { category: o.category || e.category, subcategory: o.subcategory ?? e.subcategory,
@@ -152,15 +172,15 @@ async function main() {
   chip.textContent = `${PLATFORM_LABEL[e.platform] || e.platform} · ${KIND_LABEL[e.kind] || e.kind}`;
 
   const who = [e.author, e.handle && e.platform !== 'web' ? `@${e.handle}` : ''].filter(Boolean).join(' ');
+  // LuLu 2026-10-30: no brand logo on the single page, just the source name.
   const srcLine = el('div', { class: 'src2' },
-    brandMark(e, cfg),
+    el('b', { text: e.platform === 'web' ? (e.site_name || '網站') : (PLATFORM_LABEL[e.platform] || '') }),
     who ? ` · ${who}` : '', e.published_at ? ` · 發布 ${shortDate(e.published_at)}` : '', ` · 收藏 ${shortDate(e.captured_at)}`,
     e.captures?.length > 1 ? ` · 收過 ${e.captures.length} 次` : '');
 
   const art = $('art');
   const parts = [srcLine, el('h1', { text: e.title })];
   if (ai.one_line || e.one_line_fallback) parts.push(el('p', { class: 'lead', text: ai.one_line || e.one_line_fallback }));
-  if (e.why) parts.push(el('p', { class: 'why' }, el('span', { class: 'pill dark', text: '為什麼收' }), el('span', { text: e.why })));
   const basisNote = BASIS_NOTE[e.fetch?.basis] ?? '';
   if (basisNote) parts.push(el('p', { class: 'notice', text: basisNote }));
   if (e.notice) parts.push(el('p', { class: 'notice', text: e.notice }));
@@ -235,7 +255,7 @@ async function main() {
 
   parts.push(markBlock(cfg, e.id));
   const cats = (tax.data?.categories || []).map((c) => c.name);
-  parts.push(el('div', { class: 'vbtns' }, fixBlock(cfg, e, cats), redoButton(cfg, e),
+  parts.push(el('div', { class: 'vbtns' }, fixBlock(cfg, e, cats), redoButton(cfg, e), deleteBlock(cfg, e),
     e.overridden ? el('span', { class: 'muted', style: 'font-size:13px', text: '分類／地點是你改過的' }) : null));
   art.replaceChildren(...parts);
   art.hidden = false;

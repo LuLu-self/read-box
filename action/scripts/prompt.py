@@ -5,6 +5,7 @@ CLI: prompt.py --in DIR --out DIR [--why TEXT] [--taxonomy taxonomy.json]
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 from string import Template
@@ -27,6 +28,11 @@ def render(in_dir: Path, out_dir: Path, why: str, tax: dict) -> str:
     )
 
 
+def render_suggest(in_dir: Path, out_dir: Path) -> str:
+    tpl = Template((PROMPTS / "suggest.md").read_text(encoding="utf-8"))
+    return tpl.safe_substitute(IN=str(in_dir), OUT=str(out_dir))
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--in", dest="in_dir", type=Path, required=True)
@@ -34,7 +40,12 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--why", default="")
     ap.add_argument("--taxonomy", type=Path)
     a = ap.parse_args(argv)
-    print(render(a.in_dir, a.out, a.why, taxonomy.load(a.taxonomy)))
+    kind = ""
+    try:
+        kind = json.loads((a.in_dir / "content.json").read_text(encoding="utf-8")).get("kind", "")
+    except (OSError, ValueError):
+        pass
+    print(render_suggest(a.in_dir, a.out) if kind == "suggest" else render(a.in_dir, a.out, a.why, taxonomy.load(a.taxonomy)))
     return 0
 
 

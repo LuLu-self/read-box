@@ -10,6 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap">
+  <script>try { const t = localStorage.getItem('readbox.theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch { /* storage blocked */ }</script>
   <link rel="stylesheet" href="tokens.css">
   <style>
     h1 { margin: 0; font-size: 24px; font-weight: 900; }
@@ -50,9 +51,15 @@
       </div>
     </section>
 
+    <section class="blk" id="ai" hidden>
+      <h2 class="label">AI 分類建議</h2>
+      <p class="muted" style="margin:0;font-size:13px">AI 讀過你的收藏後，認為可能屬於這些分類。勾選確認後才會搬。</p>
+      <div id="ai-list"></div>
+    </section>
+
     <section class="blk" id="suggest" hidden>
       <h2 class="label" id="suggest-title">可能屬於這個分類</h2>
-      <p class="muted" style="margin:0;font-size:13px">依標題、重點、主題和「為什麼收」裡有沒有出現分類名稱找出來的，勾選確認後才會搬。</p>
+      <p class="muted" style="margin:0;font-size:13px">先用關鍵字找到這些（標題、重點、主題裡有出現分類名稱）。也已經請 AI 幫你找，約 2–5 分鐘後回來看「AI 分類建議」。勾選確認後才會搬。</p>
       <div class="pick" id="suggest-list"></div>
       <div class="row-btns" style="margin:0">
         <button class="btn small" id="suggest-skip" type="button">先不用</button>
@@ -61,7 +68,7 @@
     </section>
 
     <section class="blk">
-      <h2 class="label">搬移收藏</h2>
+      <h2 class="label">搬移或刪除收藏</h2>
       <div class="two">
         <select class="field" id="from-cat" aria-label="從哪個分類"></select>
         <select class="field" id="from-sub" aria-label="哪個次分類"></select>
@@ -74,6 +81,7 @@
       </div>
       <div class="row-btns" style="margin:0">
         <button class="btn small" id="pick-all" type="button">全選</button>
+        <button class="btn small" id="del-go" type="button" style="border-color:var(--err);color:var(--err)">刪除勾選的</button>
         <button class="btn small go" id="move-go" type="button">搬過去</button>
       </div>
     </section>

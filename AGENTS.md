@@ -28,6 +28,8 @@ LuLu 的個人文章收藏網站：把在 Threads、IG、FB、YouTube、一般�
 - 測試資料一律自製，不把別人的貼文放進這個公開 repo。
 - LuLu 的修正（分類、地點）存在 state.json 的 override，優先於 AI，pipeline 不覆寫 state.json。
 - 讀不到內容又沒有任何標題時不收進來，放 inbox/failed，看板提醒。
+- 特殊 capture：`delete_of`（看板刪除，publish 移除條目與圖片）、`suggest_for`（AI 分類建議，結果寫 suggestions.json）、`redo_of`（重跑）。
+- 不再收「為什麼收」（LuLu 2026-10-30）；舊資料的 why 欄位保留但不顯示。
 - 看板存 token 的頁面不載入任何第三方 JS；localStorage key 用 `readbox.*`，不可和 GitHub Box 的 `repobox.*` 共用。
 
 ## Conventions

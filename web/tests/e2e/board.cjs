@@ -55,6 +55,10 @@ async function mockGitHub(page) {
       return route.fulfill({ status: 200, contentType: 'application/json',
         body: JSON.stringify(deletes.length ? [] : [{ type: 'file', name: 'x.json', path: 'inbox/failed/x.json', sha: 's' }]) });
     }
+    if (rel === 'suggestions.json') {
+      const inbox = JSON.parse(fs.readFileSync(path.join(LIB, 'index.json'), 'utf8')).items.find((i) => i.category === '收件匣');
+      return route.fulfill({ status: 200, body: JSON.stringify(inbox ? { 咖啡: { created_at: 'x', items: [{ id: inbox.id, reason: 'AI 測試理由' }] } } : {}) });
+    }
     if (rel === 'inbox/failed/x.json') return route.fulfill({ status: 200, body: JSON.stringify(FAILED) });
     if (rel === 'index.json') {
       const idx = JSON.parse(fs.readFileSync(path.join(LIB, 'index.json'), 'utf8'));
@@ -107,7 +111,8 @@ async function mockGitHub(page) {
     await page.reload();
     await page.waitForSelector('.card');
     const n = await page.locator('#list .card').count();
-    check(n === index.items.length, `${scheme}: list shows ${n}/${index.items.length} cards`);
+    const live = index.items.filter((i) => !(state && JSON.parse(state).items?.[i.id]?.deleted)).length;
+    check(n === live, `${scheme}: list shows ${n}/${live} cards`);
     check(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${scheme}: no horizontal scroll`);
     await page.screenshot({ path: `${OUT}/home-${scheme}.png`, fullPage: true });
 
@@ -147,24 +152,51 @@ async function mockGitHub(page) {
       await page.click('#l-cat');
 
       await page.fill('#links', '看這兩篇 https://example.com/a?utm_source=x 還有 https://example.com/b 。');
-      await page.fill('#why', '測試');
       await page.click('#cap-btn');
       await page.waitForFunction(() => document.querySelectorAll('#sent li').length === 2);
       const caps = puts.filter((p) => p.rel.startsWith('inbox/'));
       check(caps.length === 2, `capture wrote ${caps.length} inbox files`);
       const c0 = JSON.parse(caps[0].text);
-      check(c0.v === 1 && c0.url === 'https://example.com/a?utm_source=x' && c0.why === '測試', 'capture JSON shape');
+      check(c0.v === 1 && c0.url === 'https://example.com/a?utm_source=x' && c0.why === '', 'capture JSON shape (no why)');
+      check(await page.locator('#why').count() === 0, 'board has no 為什麼收 box');
       // iPhone shortcut: ?u=…&why=…&body=… is saved at once, with the Safari article text.
       await page.goto(base + '/index.html?u=' + encodeURIComponent('https://example.com/paywalled') + '&why=' + encodeURIComponent('捷徑測試') + '&body=' + encodeURIComponent('全文第一段。全文第二段。'));
       await page.waitForFunction(() => document.querySelectorAll('#sent li').length === 1);
       const sc = JSON.parse(puts.filter((p) => p.rel.startsWith('inbox/')).at(-1).text);
-      check(sc.url === 'https://example.com/paywalled' && sc.why === '捷徑測試' && sc.text === '全文第一段。全文第二段。', 'shortcut link saved with why and body');
+      check(sc.url === 'https://example.com/paywalled' && sc.why === '' && sc.text === '全文第一段。全文第二段。', 'shortcut link saved with body, why ignored');
       check(!(await page.evaluate(() => location.search)), 'query cleared after saving');
       await page.fill('#links', '只是一段筆記');
       await page.click('#cap-btn');
       await page.waitForFunction(() => document.querySelectorAll('#sent li').length === 2);
       const note = JSON.parse(puts.filter((p) => p.rel.startsWith('inbox/')).at(-1).text);
       check(note.url === '' && note.text === '只是一段筆記', 'text without link is saved as a note');
+    }
+
+    if (scheme === 'light') {
+      // 外觀: 淺色／深色 override the phone setting and stick across pages.
+      await page.goto(base + '/index.html');
+      await page.click('#settings-btn');
+      await page.locator('[data-theme-choice="dark"]').click();
+      check(await page.evaluate(() => document.documentElement.dataset.theme) === 'dark', 'theme dark applied');
+      await page.goto(base + '/read.html#' + index.items[0].id);
+      check(await page.evaluate(() => document.documentElement.dataset.theme) === 'dark', 'theme carried to the single page');
+      await page.goto(base + '/index.html');
+      await page.click('#settings-btn');
+      await page.locator('[data-theme-choice="auto"]').click();
+      check(!(await page.evaluate(() => document.documentElement.dataset.theme)), 'theme back to phone setting');
+      await page.keyboard.press('Escape');
+
+      // Delete a card from its page: hidden at once, pipeline asked to remove it.
+      await page.goto(base + '/read.html#syn-osaka-2');
+      await page.waitForSelector('h1');
+      check(await page.locator('.src2 svg').count() === 0, 'single page has no brand logo');
+      await page.locator('button', { hasText: '刪除這篇' }).click();
+      await page.locator('dialog[open] button', { hasText: '刪除' }).click();
+      await page.waitForURL(/index\.html|\/$/);
+      await page.waitForSelector('.card');
+      check(JSON.parse(state).items['syn-osaka-2'].deleted === true, 'delete flagged in state');
+      check(puts.some((p) => p.rel.startsWith('inbox/') && JSON.parse(p.text).delete_of === 'syn-osaka-2'), 'delete capture queued');
+      check(!(await page.textContent('#list')).includes('測試：大阪美食影片'), 'deleted card gone from the board');
     }
 
     const yt = index.items.find((i) => i.platform === 'youtube' && !i.id.startsWith('syn-')) || index.items[0];
@@ -199,6 +231,8 @@ async function mockGitHub(page) {
       await page.waitForFunction(() => document.getElementById('msg').textContent.includes('已新增'));
       const tx = JSON.parse(taxonomy);
       check(tx.categories.some((c) => c.name === '咖啡') && tx.categories.at(-1).name === '收件匣', 'new category saved before 收件匣');
+      check(puts.some((p) => p.rel.startsWith('inbox/') && JSON.parse(p.text).suggest_for === '咖啡'), 'AI suggestion requested for the new category');
+      check((await page.textContent('#ai')).includes('AI 測試理由'), 'AI suggestions shown with reasons');
       await page.selectOption('#from-cat', '收件匣');
       await page.locator('#move-list input').first().check();
       await page.selectOption('#to-cat', '咖啡');

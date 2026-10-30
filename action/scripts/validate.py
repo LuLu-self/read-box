@@ -138,7 +138,18 @@ def main(argv: list[str]) -> int:
         print(f"summary.json unreadable: {e}")
         return 1
     text = a.text.read_text(encoding="utf-8") if a.text.is_file() else ""
-    _, errs = check(raw, text, taxonomy.load(a.taxonomy))
+    in_dir = a.text.parent
+    content = {}
+    try:
+        content = json.loads((in_dir / "content.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        pass
+    if content.get("kind") == "suggest":
+        import suggest
+        ids = {r.get("id") for r in json.loads((in_dir / "items.json").read_text(encoding="utf-8"))}
+        _, errs = suggest.check(raw, ids, content.get("suggest_for", ""))
+    else:
+        _, errs = check(raw, text, taxonomy.load(a.taxonomy))
     for e in errs:
         print(e)
     return 1 if errs else 0

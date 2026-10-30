@@ -1,8 +1,9 @@
 'use strict';
 
-import { loadCfg, getJson, updateJson } from './lib/gh.mjs';
-import { withOverrides } from './lib/data.mjs';
+import { loadCfg, getJson, updateJson, putFile } from './lib/gh.mjs';
+import { withOverrides, makeId, isoLocal } from './lib/data.mjs';
 import { el } from './lib/ui.mjs';
+import { deleteItems } from './lib/remove.mjs';
 import { INBOX, FIXED, addCategory, addSub, moveCategory, reassign, renameCategory, renameSub, removeCategory,
   removeSub, suggestFor } from './lib/taxonomy.mjs';
 
@@ -10,13 +11,15 @@ const $ = (id) => document.getElementById(id);
 const DEFAULT = { v: 1, categories: ['旅遊', '美食', '運動', '健康', '語言', '生活', '工作', '學習成長', '心理', '人際關係', '理財', '科技與 AI', INBOX]
   .map((name) => ({ name, subs: [] })) };
 const EMPTY_STATE = { v: 1, items: {} };
-const S = { cfg: loadCfg(), tax: DEFAULT, state: EMPTY_STATE, raw: [], items: [] };
+const S = { cfg: loadCfg(), tax: DEFAULT, state: EMPTY_STATE, raw: [], items: [], ai: {} };
 
 const say = (t, err = false) => { $('msg').textContent = t; $('msg').className = err ? 'err' : 'muted'; };
 
 async function load() {
   if (!S.cfg) { say('還沒連結收藏庫，請回首頁設定。', true); return; }
-  const [tax, st, idx] = await Promise.all([getJson(S.cfg, 'taxonomy.json'), getJson(S.cfg, 'state.json'), getJson(S.cfg, 'index.json')]);
+  const [tax, st, idx, ai] = await Promise.all([getJson(S.cfg, 'taxonomy.json'), getJson(S.cfg, 'state.json'),
+    getJson(S.cfg, 'index.json'), getJson(S.cfg, 'suggestions.json')]);
+  S.ai = ai.data && typeof ai.data === 'object' ? ai.data : {};
   if (tax.data?.categories) S.tax = tax.data;
   S.state = st.data || EMPTY_STATE;
   S.raw = idx.data?.items || [];
@@ -48,6 +51,40 @@ async function apply(edit, done) {
   return true;
 }
 
+// Ask the pipeline's AI which saved items fit this category; results land in suggestions.json.
+async function askAi(name) {
+  const now = new Date();
+  const cap = { v: 1, url: '', text: '', captured_at: isoLocal(now), client: 'board@1', suggest_for: name };
+  const r = await putFile(S.cfg, `inbox/${makeId(now)}.json`, JSON.stringify(cap, null, 2) + '\n', `suggest: ${name}`);
+  say(r.ok ? `已請 AI 找「${name}」的收藏，約 2–5 分鐘後重新整理這頁` : 'AI 請求沒送出，請再試一次', !r.ok);
+}
+
+function renderAi() {
+  const byId = new Map(S.items.map((i) => [i.id, i]));
+  const blocks = Object.entries(S.ai).map(([name, v]) => {
+    const picks = (v.items || []).map((x) => ({ ...x, item: byId.get(x.id) })).filter((x) => x.item && x.item.category !== name);
+    if (!picks.length || !S.tax.categories.some((c) => c.name === name)) return null;
+    const box = el('div', { class: 'pick' }, ...picks.map((x) => el('label', {}, el('input', { type: 'checkbox', value: x.id, checked: true }),
+      el('span', {}, x.item.title, el('small', { text: `${x.reason}　（現在在：${x.item.category}）` })))));
+    return el('div', { class: 'cat' }, el('div', { class: 'cat-head' }, el('b', { text: `可能屬於「${name}」` })), box,
+      el('div', { class: 'row-btns', style: 'margin:0' },
+        el('button', { class: 'btn small', type: 'button', text: '不用了', onclick: () => dropAi(name) }),
+        el('button', { class: 'btn small go', type: 'button', text: '搬進來', onclick: () => {
+          const ids = new Set(checked(box));
+          if (!ids.size) return;
+          apply((t, s, items) => ({ tax: t, state: reassign(s, items.filter((i) => ids.has(i.id)), name, '') }), `已搬 ${ids.size} 篇到「${name}」`)
+            .then((ok) => { if (ok) dropAi(name); });
+        } })));
+  }).filter(Boolean);
+  $('ai').hidden = !blocks.length;
+  $('ai-list').replaceChildren(...blocks);
+}
+
+async function dropAi(name) {
+  const r = await updateJson(S.cfg, 'suggestions.json', (cur) => { const c = { ...(cur || {}) }; delete c[name]; return c; }, `suggest: 清除 ${name}`, {});
+  if (r.ok) { S.ai = r.data; renderAi(); }
+}
+
 function count(cat, sub) {
   return S.items.filter((i) => i.category === cat && (sub == null || i.subcategory === sub)).length;
 }
@@ -62,6 +99,7 @@ function catBlock(c, n) {
         onclick: () => apply((t) => moveCategory(t, c.name, -1)) }),
       el('button', { class: 'btn small', type: 'button', text: '↓', 'aria-label': '下移', disabled: n === S.tax.categories.length - 1,
         onclick: () => apply((t) => moveCategory(t, c.name, 1)) }),
+      c.name === INBOX ? null : el('button', { class: 'btn small', type: 'button', text: 'AI 找', title: '請 AI 從所有收藏找出可能屬於這個分類的', onclick: () => askAi(c.name) }),
       fixed ? null : el('button', { class: 'btn small', type: 'button', text: '改名', onclick: () => {
         const to = prompt(`把「${c.name}」改成：`, c.name);
         if (to && to.trim() !== c.name) apply((t, s, items) => renameCategory(t, s, items, c.name, to.trim()), `已改名，${count(c.name)} 篇跟著搬過去`);
@@ -116,6 +154,7 @@ function renderTarget() {
 function render() {
   $('cats').replaceChildren(...S.tax.categories.map(catBlock));
   renderMove();
+  renderAi();
 }
 
 function checked(box) { return [...box.querySelectorAll('input:checked')].map((x) => x.value); }
@@ -138,7 +177,7 @@ function showSuggest(name) {
 $('add-cat').addEventListener('click', async () => {
   const v = $('new-cat').value.trim();
   if (!v) return;
-  if (await apply((t) => addCategory(t, v), `已新增「${v}」`)) { $('new-cat').value = ''; showSuggest(v); }
+  if (await apply((t) => addCategory(t, v), `已新增「${v}」`)) { $('new-cat').value = ''; showSuggest(v); askAi(v); }
 });
 $('suggest-skip').addEventListener('click', () => { $('suggest').hidden = true; });
 for (const id of ['from-cat', 'from-sub']) $(id).addEventListener('change', renderMove);
@@ -150,6 +189,16 @@ $('move-go').addEventListener('click', () => {
   const cat = $('to-cat').value, sub = $('to-sub').value;
   apply((t, s, items) => ({ tax: t, state: reassign(s, items.filter((i) => ids.has(i.id)), cat, sub) }),
     `已搬 ${ids.size} 篇到「${[cat, sub].filter(Boolean).join(' › ')}」`);
+});
+
+$('del-go').addEventListener('click', async () => {
+  const ids = checked($('move-list'));
+  if (!ids.length) { say('先勾選要刪除的收藏', true); return; }
+  if (!confirm(`刪除勾選的 ${ids.length} 篇？收藏庫裡的內容和圖片也會一起刪掉。`)) return;
+  say('刪除中…');
+  const r = await deleteItems(S.cfg, ids);
+  if (r.state) { S.state = r.state; S.items = withOverrides(S.raw, S.state); render(); }
+  say(r.ok ? `已刪除 ${ids.length} 篇` : '有幾篇沒刪成功，請再試一次', !r.ok);
 });
 
 load();

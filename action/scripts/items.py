@@ -29,6 +29,14 @@ def check_capture(cap: object) -> str | None:
     url, text = cap.get("url") or "", cap.get("text") or ""
     if not isinstance(url, str) or not isinstance(text, str):
         return "capture: url/text must be strings"
+    if "suggest_for" in cap:
+        name = cap["suggest_for"]
+        ok = isinstance(name, str) and 1 <= len(name.strip()) <= 20 and not re.search(r"[›/\\<>\"]", name)
+        return None if ok else "capture: suggest_for is not a category name"
+    gone = cap.get("delete_of")
+    if gone is not None:
+        # LuLu deleted a card on the board; nothing to fetch.
+        return None if isinstance(gone, str) and ID_RE.match(gone) else "capture: delete_of is not an item id"
     if url and not URL_RE.match(url):
         return "capture: url is not an http(s) link"
     if not url and not text.strip():

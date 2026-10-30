@@ -256,6 +256,15 @@ def publish_one(repo: Path, art: Path, item: dict, tax: dict) -> str:
     cap = load_json(repo / "inbox" / f"{item_id}.json", {}) or {}
     if item_id.startswith("dispatch-"):
         cap = {"url": item.get("url"), "captured_at": now_iso(), "why": ""}
+    if isinstance(cap.get("suggest_for"), str):
+        return publish_suggestion(repo, art, item_id, cap["suggest_for"].strip())
+    gone = cap.get("delete_of")
+    if isinstance(gone, str) and ID_RE.match(gone):
+        for p in (repo / "library" / f"{gone}.json", repo / "library" / f"{gone}.txt"):
+            p.unlink(missing_ok=True)
+        shutil.rmtree(repo / "media" / gone, ignore_errors=True)
+        move_capture(repo, item_id, "done")
+        return "deleted"
     status = load_json(art / "status.json", {}) or {}
     if item.get("error") or not (art / "content.json").is_file():
         move_capture(repo, item_id, "failed", item.get("error") or status.get("error") or "pipeline: no fetch output")
@@ -329,12 +338,32 @@ def ai_run_info(art: Path) -> dict:
     return info
 
 
+def publish_suggestion(repo: Path, art: Path, item_id: str, name: str) -> str:
+    """Keep the AI's candidates for a category in suggestions.json (only ids that exist)."""
+    import suggest
+    raw = load_json(art / "summary.json")
+    known = {p.stem for p in (repo / "library").glob("*.json")}
+    picks, errs = suggest.check(raw, known, name) if raw is not None else ([], ["沒有 AI 結果"])
+    if errs or not suggest.valid_name(name):
+        move_capture(repo, item_id, "failed", "AI 分類建議沒有完成：" + "；".join(errs or ["分類名稱不對"])[:200])
+        return "failed"
+    path = repo / "suggestions.json"
+    data = load_json(path, {}) or {}
+    data = data if isinstance(data, dict) else {}
+    data[name] = {"created_at": now_iso(), "items": picks}
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    move_capture(repo, item_id, "done")
+    return "suggested"
+
+
 def git(repo: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
 
 
 def push(repo: Path, message: str) -> None:
     git(repo, "add", "-A", "library", "media", "inbox", "index.json")
+    if (repo / "suggestions.json").exists():
+        git(repo, "add", "suggestions.json")
     if git(repo, "diff", "--cached", "--quiet").returncode == 0:
         return
     git(repo, "-c", "user.name=github-actions[bot]",
@@ -364,7 +393,7 @@ def main(argv: list[str]) -> int:
     a = ap.parse_args(argv)
     items = load_json(a.items, []) or []
     tax = taxonomy.load(a.repo / "taxonomy.json")
-    counts = {"ok": 0, "card": 0, "dedup": 0, "skipped": 0, "failed": 0}
+    counts = {"ok": 0, "card": 0, "dedup": 0, "skipped": 0, "deleted": 0, "suggested": 0, "failed": 0}
     failed_ids = []
     for item in items:
         if not isinstance(item, dict) or not ID_RE.match(str(item.get("id", ""))):
@@ -376,7 +405,8 @@ def main(argv: list[str]) -> int:
     rebuild_index(a.repo)
     if a.push:
         push(a.repo, f"readbox: {counts['ok']} analyzed, {counts['card']} cards, {counts['dedup']} dup, "
-                     f"{counts['skipped']} skipped, {counts['failed']} failed")
+                     f"{counts['skipped']} skipped, {counts['deleted']} deleted, {counts['suggested']} suggestions, "
+                     f"{counts['failed']} failed")
     print(json.dumps({**counts, "failed_ids": failed_ids}, ensure_ascii=False))
     return 0
 
